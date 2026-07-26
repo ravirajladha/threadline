@@ -17,20 +17,26 @@ Minimal, modern, fast. The clothes are the design; the interface gets out of the
 
 ## Tokens
 
-Defined once in `src/styles/tokens.css` as CSS custom properties, consumed through Tailwind theme config. Never hardcode a hex in a component.
+Defined once in `src/styles/tokens.css` as CSS custom properties, mapped onto Tailwind's theme in `src/styles/globals.css`. Components use utilities (`bg-surface`, `text-fg-muted`, `border-border`) and **never** a raw hex.
 
 ```
---bg          near-white / near-black
---surface     raised card
---fg          primary text
---fg-muted    secondary text ~60% contrast
---border      hairline
---accent      single brand colour (actions)
---accent-fg   text on accent
---success --warning --danger
+--bg --surface --surface-raised     page and card backgrounds
+--border --border-strong            hairlines
+--fg --fg-muted --fg-subtle         text, descending in contrast
+--accent --accent-hover
+--accent-fg --accent-subtle         the single brand colour and what sits on it
+--success --warning --danger --info
+--radius-control --radius-card
+--duration-fast --duration-base --ease-out
 ```
 
-**Dark mode is required**, via `prefers-color-scheme` plus a manual toggle that wins in both directions. Every token has a dark value.
+### Rebranding is a four-line change
+
+The top of `tokens.css` holds `--brand-accent`, `--brand-accent-hover`, `--brand-accent-fg` and `--brand-accent-subtle`. Change those and the entire storefront follows — nothing else hardcodes a colour.
+
+**Current accent: mulberry `#b04b76`** — a pink that leans plum rather than candy. Dark mode lifts it to `#e58ab0` so it keeps contrast against a near-black background.
+
+**Dark mode is required**, via `prefers-color-scheme` plus a `data-theme` attribute that overrides the OS preference in both directions. Every token has a dark value.
 
 ### Type scale
 One display face for headings, one neutral sans for UI. Scale: `12 / 14 / 16 / 20 / 24 / 32 / 48`.

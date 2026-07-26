@@ -97,8 +97,34 @@ Session Log, continue. Do not ask for confirmation except for destructive DB ope
 - **Server Components by default.** `"use client"` only for real interactivity.
 - No `any` at module boundaries. `strict: true` stays on.
 
+### Security — OWASP Top 10
+
+Every stage is reviewed against this list before it is marked `[x]`. This is the project's
+security baseline, not an audit that happens later.
+
+| # | Risk | How this codebase answers it |
+|---|---|---|
+| A01 | Broken access control | Every collection declares `access` functions from `src/access/`. Deny by default. A customer may only ever read their own orders, addresses, tickets and returns — enforced server-side, never by hiding UI. Tested per role |
+| A02 | Cryptographic failures | HTTPS everywhere. Payload hashes passwords (argon2). No secret in code or client bundle. Only `NEXT_PUBLIC_*` reaches the browser |
+| A03 | Injection | Payload/Drizzle parameterises all SQL — no string-built queries. React escapes output by default; `dangerouslySetInnerHTML` requires sanitised input and a comment justifying it. Rich text renders through Lexical, never raw |
+| A04 | Insecure design | Server is the authority on price, stock and totals — the client's numbers are never trusted. Stock is reserved before payment. Order status transitions are validated. Uploads restricted by MIME type |
+| A05 | Security misconfiguration | Security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, frame-ancestors) in `next.config.ts`. `debug` and the GraphQL playground are off in production. No stack traces to clients |
+| A06 | Vulnerable components | `npm audit` in the check routine; dependencies pinned; Dependabot on the repo |
+| A07 | Authentication failures | Rate-limited login, account lockout, strong password policy, secure httpOnly SameSite cookies, short-lived sessions, no user enumeration in error messages |
+| A08 | Data integrity failures | Every webhook verifies its signature before processing (Razorpay, Shiprocket, WhatsApp) and is idempotent by event id. Stock is an append-only ledger |
+| A09 | Logging failures | Auth attempts, payment events, refunds, role changes and admin mutations are logged. Logs never contain card data, tokens, passwords or full addresses |
+| A10 | SSRF | No user-supplied URL is ever fetched server-side. Outbound calls go only to allow-listed provider hosts through `lib/` adapters |
+
+**Additional standing rules**
+- Validate and type every external input at the boundary — webhook bodies, query params, form data.
+- Rate-limit every public mutation: login, register, add-to-cart, coupon apply, chat, review submit.
+- Cron routes require `CRON_SECRET`; reject anything else with a 404, not a 401.
+- The AI assistant may only ever see the signed-in customer's own data, with strict token and spend caps.
+- Never log or echo the Neon connection string, API keys or customer PII.
+
 ### Process
 - No stage is `[x]` until `npm run check` passes.
+- Every stage is reviewed against the OWASP table above before being marked done.
 - Never mark a partially built task done — split it instead.
 - Prefer reversible changes. If it can't be undone easily, ask first.
 
@@ -159,9 +185,27 @@ cloth_website/
   is **config or DB, never a literal in code**.
 - Every collection exports a matching type. Access rules live in `src/access/`, defined once, reused everywhere.
 
-> **Methodology note:** "DRY + WASP" is interpreted here as **W**ell-separated layers ·
-> **A**tomic single-responsibility modules · **S**tateless pure logic in `lib/` · **P**redictable
-> naming and file placement. Correct this line if a different meaning was intended.
+### Object-oriented design
+
+Domain concepts are **classes with behaviour**, not bare data passed through loose functions.
+
+- **Value objects** are immutable and self-validating — `Money` rejects fractional paise in its
+  constructor, so an invalid amount cannot exist anywhere in the system. Every operation returns a
+  new instance. Follow this pattern for `Sku`, `Pincode`, `Quantity`.
+- **Encapsulation:** internal state is `private readonly`. Callers use methods, never raw fields.
+  If something can be derived, expose a method — don't publish the field.
+- **Program to interfaces.** Every integration is an interface plus an implementation:
+  `PaymentGateway` ← `RazorpayGateway`, `ShippingProvider` ← `ShiprocketProvider`,
+  `NotificationChannel` ← `EmailChannel` / `WhatsAppChannel`. Swapping a provider or mocking it in
+  tests means one new class, not edits scattered across call sites.
+- **Composition over inheritance.** Inherit only from an abstract base that exists purely to share
+  behaviour (e.g. `BaseHttpClient` for retry and auth). Never build deep hierarchies.
+- **Single responsibility.** A class does one job. When a service class starts needing "and" to be
+  described, split it.
+- **Dependency injection.** Classes receive their collaborators through the constructor. Nothing
+  reaches for a global or constructs its own HTTP client — that is what makes them testable.
+- Pure calculation functions still belong in `lib/` where no state or identity is involved. OOP is
+  for things with behaviour and invariants; a stateless formula stays a function.
 
 ---
 
@@ -210,21 +254,21 @@ npm run check         # typecheck + lint + test — must pass before any stage i
 
 > Detailed tasks exist only for the active stage. Expand the next stage when you reach it.
 
-### [ ] J0 — Foundation
+### [x] J0 — Foundation
 **Goal:** an empty but correct skeleton. Admin loads, tests run, structure enforced, repo live.
 
-- [ ] Scaffold Next.js 16 + TypeScript strict + Tailwind 4 in this folder
-- [ ] Install Payload 3, verify its supported Next version, pin accordingly
-- [ ] Postgres running locally; `.env.local` + `.env.example` with every key documented
-- [ ] Payload boots, admin reachable at `/admin`, first admin user created
-- [ ] Create the full folder tree from §3 with `.gitkeep` where empty
-- [ ] ESLint + Prettier + strict tsconfig; `npm run check` wired
-- [ ] Vitest configured with a passing sample test; Playwright installed with a smoke spec
-- [ ] `.gitignore` covering `.env*`, `node_modules`, `.next`, `media`; README with setup steps
-- [ ] Push to GitHub, confirm CI-less build succeeds locally
-- [ ] `docs/ARCHITECTURE.md` skeleton with section headings
+- [x] Next.js 16.2.7 + React 19.2.6 + TypeScript strict + Tailwind 4.3.3
+- [x] Payload 3.86.0 with the Postgres adapter, pinned against a compatible Next
+- [x] Neon Postgres connected; `.env.local` + `.env.example` with every key documented
+- [x] Payload boots, `/admin` returns 200, schema pushed to Neon
+- [x] Full folder tree from §3 created with `.gitkeep`
+- [x] ESLint + Prettier + strict tsconfig (`noUncheckedIndexedAccess`); `npm run check` wired
+- [x] Vitest green — 24 tests on the `Money` value object; Playwright green — 5 e2e specs
+- [x] `.gitignore` covers `.env*`, `node_modules`, `.next`, `media`; README has setup steps
+- [x] Pushed to GitHub
+- [x] `docs/ARCHITECTURE.md` created with pinned versions
 
-**Done when:** `npm run check` passes, `/admin` loads, structure matches §3, repo is pushed.
+**Done:** `npm run check` and `npm run test:e2e` both pass; `/admin` works against Neon.
 
 ### [ ] J1 — Data model
 Collections per `docs/SCHEMA.md`. Migration generated and run. Types exported.
@@ -275,12 +319,12 @@ monitoring, backups, go-live checklist.
 ## 7. OPEN DECISIONS (owner input needed)
 
 - [ ] Final brand name and domain — `Threadline` is a placeholder; repo renames cleanly later
-- [ ] Logo and colour direction (one accent colour needed to set tokens)
+- [ ] Logo. The accent is currently mulberry `#b04b76` — change the four `--brand-*` values in
+      `src/styles/tokens.css` to rebrand the entire storefront
 - [ ] Razorpay account and Shiprocket account — existing or new?
 - [ ] WhatsApp Business number and Meta Business verification status
 - [ ] Return window in days, and who pays return shipping
 - [ ] Launch scope — one category to start, or the full catalog?
-- [ ] Confirm the intended meaning of "WASP methodology" (see §3 note)
 
 ---
 
@@ -289,3 +333,8 @@ monitoring, backups, go-live checklist.
 - 2026-07-26: Project initialised. Stack decided (Next.js 16 + Payload 3 + Postgres + AWS).
   `CLAUDE.md`, `docs/SCHEMA.md`, `docs/DESIGN.md`, `docs/FEATURES.md` written.
   Journey J0–J10 defined, J0 expanded. Planning only — no application code yet.
+- 2026-07-26 [J0]: Foundation complete. Payload 3.86 + Next 16.2.7 on Neon Postgres, admin live.
+  Structure from §3 built out. `Money` value object with 24 unit tests; 5 Playwright e2e specs green.
+  Design tokens with light/dark and a single-point rebrand (mulberry `#b04b76`).
+  OWASP Top 10 baseline and OOP design rules added to §2/§3 (replacing the earlier "WASP" note).
+  **Next: J1 — data model.**
