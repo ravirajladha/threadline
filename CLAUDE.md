@@ -18,6 +18,25 @@ This file is a **loop**, not a document. Each session:
 5. Mark `[x]`, commit, push, append one line to the Session Log.
 6. When tokens run low → stop cleanly, log exactly where you stopped.
 
+### Token budget — checkpoint before you run out
+
+A session that dies mid-stage with uncommitted work has cost tokens and delivered nothing. So
+**checkpointing is a scheduled task, not an emergency response**:
+
+| Budget used | Do this |
+|---|---|
+| **~50%** | Stop starting new parallel work. Finish and integrate what is already in flight |
+| **~75%** | **Checkpoint now.** Run `npm test`, commit everything green, push, write the Session Log entry. Only then carry on |
+| **~90%** | Stop building. Leave the tree committed and the log accurate. Write the next session's first task as an explicit line in the log |
+
+Rules for a checkpoint commit mid-stage:
+- Commit **working, tested code** freely — a partially built stage is normal and the journey
+  expects it. Never mark the stage `[x]`.
+- If something does not typecheck yet, say so in the commit body and in the Session Log. Never
+  claim a stage passed `npm run check` when it has not been run.
+- The Session Log entry must name **the exact next action**, not a vague area — "wire
+  `ListingView` to the components in `src/components/catalog/`", not "continue J3".
+
 **Progressive expansion.** Only the *active* stage carries detailed tasks. Later stages are
 headlines only. Expand a stage when you reach it; collapse it to one line once complete.
 This keeps the file small and every session cheap.
@@ -121,6 +140,33 @@ security baseline, not an audit that happens later.
 - Cron routes require `CRON_SECRET`; reject anything else with a 404, not a 401.
 - The AI assistant may only ever see the signed-in customer's own data, with strict token and spend caps.
 - Never log or echo the Neon connection string, API keys or customer PII.
+
+### Build order — stub the outside world first (owner's decision, 2026-07-27)
+
+The whole customer journey is built and walkable **before** a single third-party account is
+connected. Every external provider ships first as a **stub adapter behind its real interface**,
+returning the happy-path answer, so browse → cart → checkout → order → account works end to end
+on a laptop with no keys, no spend and no vendor onboarding blocking progress.
+
+| Surface | Now | Later |
+|---|---|---|
+| Payments | `StubGateway implements PaymentGateway` — always succeeds, fabricates a payment id, fires the same webhook shape | `RazorpayGateway` |
+| Login | Static OTP (`000000`) accepted in development, real session cookie issued | Real OTP delivery |
+| Email | `ConsoleChannel implements NotificationChannel` — renders the template, logs it, writes the `notifications` row | Resend |
+| WhatsApp | Same stub channel | Meta Cloud API |
+| Shipping | `StubShippingProvider` — fabricates an AWB, advances tracking on demand | Shiprocket |
+| Media | Locally generated sample images, uploaded through the normal media pipeline | Real photography on S3 |
+
+**Rules that keep this honest:**
+- A stub implements the *same interface* as the real thing and lives beside it in `src/lib/`.
+  Swapping it later is one line in a factory — never a rewrite of the call sites.
+- Stubs are selected by environment, never by a branch inside business logic. A stub must be
+  **impossible to reach in production**: the factory throws at startup if `NODE_ENV=production`
+  and no real provider is configured.
+- The happy path being stubbed does not excuse skipping the failure paths in *our* code —
+  signature verification, idempotency by event id, and the order status machine are all built
+  for real now, and tested against the stub's payloads.
+- Simple CRUD first, the hard integrations one at a time afterwards, as stage **J11**.
 
 ### Process
 - No stage is `[x]` until `npm run check` passes.
@@ -331,31 +377,64 @@ what it can act on.
 round trip, and `support_agent` refused on every endpoint.
 
 ### [ ] J3 — Storefront: browse
-Home, category listing with URL-state filters (size, colour, price, availability), product detail with
-colour-swapping gallery, size pills with sold-out visible-but-disabled, size chart modal, breadcrumbs.
-Metadata + Product/BreadcrumbList JSON-LD on every page.
+**Goal:** a customer can find a garment. Home → category → product, with filters that survive a
+refresh and a share, and a product page that answers "will this fit me" before it asks for a sale.
 
-### [ ] J4 — Cart & checkout
+Routes: `/` · `/shop` · `/c/[slug]` (category) · `/p/[slug]` (product).
+
+- [ ] `src/lib/catalog/filters.ts` — URL search params ⇄ typed `CatalogFilters`. Untrusted input:
+      garbage is dropped, never thrown on. Canonical serialisation (sorted, defaults omitted) so
+      one filter set has one URL. Toggling a facet resets the page
+- [ ] `src/lib/catalog/query.ts` — filters → Payload `Where` + sort. Two-phase: variants match the
+      facets, products are paginated by the resulting id set. Only `active` products, `isActive`
+      variants. Price handles the variant-overrides-mrp fallback
+- [ ] `src/lib/catalog/variantView.ts` — depth-populated variants → flat, serialisable view models.
+      Availability is `stockQty − reservedQty`, floored at zero
+- [ ] `src/lib/catalog/productView.ts` — colour swatches, size pills (in `sortOrder`, sold-out
+      flagged not hidden), default colour selection, price range, "Only N left"
+- [ ] `src/lib/catalog/gallery.ts` — images for the selected colour, with a defined fallback chain
+- [ ] `src/lib/catalog/breadcrumbs.ts` — category ancestry → crumbs, cycle-safe
+- [ ] `src/lib/seo/metadata.ts` — Next `Metadata` from a doc + its `seo` override; filtered
+      listings canonicalise to the clean category URL
+- [ ] `src/lib/seo/jsonLd.ts` — Product · BreadcrumbList · Website builders, plus the `<` escaping
+      that makes embedding them in a `<script>` safe (A03)
+- [ ] `src/lib/catalog/payloadCatalog.ts` — the Payload port behind a typed `CatalogPort` interface
+- [ ] Components: `layout/` Header · Footer · Breadcrumbs · `ui/` Price · Swatch · Modal ·
+      `catalog/` FilterRail · SortSelect · ActiveFilters · Pagination · ProductGrid ·
+      `product/` ProductCard · Gallery · VariantPicker · SizeChartModal
+- [ ] Security headers in `next.config.ts` (A05) — the first stage that serves public pages
+- [ ] OWASP pass: A03 JSON-LD escaped at the boundary, A04 stock read server-side and never from
+      the query string, A05 headers + no draft/archived product reachable by slug
+- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §8 written
+
+**Done:** every filter combination is a shareable URL, a sold-out size is visible and disabled, and
+each page carries metadata plus valid structured data.
+
+### [ ] J4 — Cart & checkout *(stubbed payment)*
 DB-backed cart keyed to a session cookie, guest → customer merge on login, address book,
-shipping rules, GST, coupons, Razorpay order creation, webhook with idempotency, confirmation page.
+shipping rules, GST, coupons. `PaymentGateway` interface with a **`StubGateway`** that always
+succeeds and emits a real-shaped webhook — signature verification, idempotency by event id and
+stock reservation are all built for real against it. Confirmation page.
 
-### [ ] J5 — Orders & fulfilment + scheduler
-Order status machine, Shiprocket create/track/cancel, AWB storage, delivery webhook, and one
-scheduler registry (abandoned cart, status sync, stock alerts, review requests) on secret-protected cron routes.
+### [ ] J5 — Orders & fulfilment + scheduler *(stubbed courier)*
+Order status machine, `ShippingProvider` interface with a **`StubShippingProvider`** that
+fabricates an AWB and advances tracking on demand, delivery webhook, and one scheduler registry
+(abandoned cart, status sync, stock alerts, review requests) on secret-protected cron routes.
 
-### [ ] J6 — Notifications: email + WhatsApp
-Single `notify.dispatch(event, payload)` API with Resend and Meta WhatsApp Cloud API adapters.
-Templates: placed, confirmed, shipped, out for delivery, delivered, cancelled, refund, abandoned cart,
-back-in-stock, review request. Every send logged; failures never block the order flow.
+### [ ] J6 — Notifications *(stubbed delivery)*
+Single `notify.dispatch(event, payload)` API with a **`ConsoleChannel`** that renders the template,
+logs it and writes the `notifications` row. Templates: placed, confirmed, shipped, out for delivery,
+delivered, cancelled, refund, abandoned cart, back-in-stock, review request. Every send logged;
+failures never block the order flow. Resend and WhatsApp adapters land in J11.
 
-### [ ] J7 — Customer support + Claude assistant
-Ticket collection, customer "My Requests" view, admin inbox with reply and assignment.
-Claude-powered assistant (`ANTHROPIC_API_KEY`) grounded in the live catalog and the signed-in
-customer's own orders, with strict data scoping, rate limiting, cost caps, and clean handoff to a human ticket.
+### [ ] J7 — Customer support *(assistant deferred)*
+Ticket collection, customer "My Requests" view, admin inbox with reply and assignment — plain CRUD,
+no spend. The Claude-powered assistant moves to J11, since it is the one feature that cannot be
+stubbed usefully and costs money per message.
 
-### [ ] J8 — Account, returns & loyalty
-Auth, order history with status timeline, wishlist with back-in-stock alerts, reviews with photos and
-fit feedback, returns and **size exchange**, loyalty points.
+### [ ] J8 — Account, returns & loyalty *(static OTP)*
+Auth with a static development OTP, order history with status timeline, wishlist with back-in-stock
+alerts, reviews with photos and fit feedback, returns and **size exchange**, loyalty points.
 
 ### [ ] J9 — SEO & performance
 Sitemap, robots, canonicals, OG image generation, Core Web Vitals pass, image pipeline,
@@ -364,6 +443,12 @@ caching and revalidation strategy, structured data validation, Lighthouse ≥ 95
 ### [ ] J10 — Launch
 AWS provisioning, S3 media, build in CI (never on the app instance), migrations, secrets,
 monitoring, backups, go-live checklist.
+
+### [ ] J11 — Live integrations *(replaces the stubs, one provider at a time)*
+Each provider is a separate commit and a separate decision to spend. The interface and its tests
+already exist from J4–J7, so each swap is one new class plus its contract test.
+Order: Razorpay → Resend → real OTP delivery → Shiprocket → WhatsApp Cloud API → Claude assistant.
+Every one keeps its stub, which is what the test suite and local development continue to run against.
 
 ---
 
@@ -406,4 +491,28 @@ monitoring, backups, go-live checklist.
   That run also found two real gaps, both fixed: handlers had no error boundary, so a database
   error returned the failing SQL to the caller, and `actor` was taking `req.user.id` without
   checking it was a staff id. `safeHandler` and `staffIdOf` now cover both.
-  **Next: J3 — storefront browse.**
+- 2026-07-27 [J3, part 1 of 2]: Storefront browse — **the whole logic layer, none of the UI yet.**
+  741 unit tests, up from 351. Shipped and green: `catalog/` — `types.ts` (the `CatalogPort`
+  contract every page depends on), `filters.ts` (URL ⇄ typed filters, canonical serialisation,
+  hostile input dropped not thrown on), `query.ts`, `select.ts` (filter · facet · sort · paginate),
+  `variantView.ts`, `productView.ts`, `gallery.ts`, `breadcrumbs.ts`, `categoryTree.ts`,
+  `payloadCatalog.ts`, `server.ts`; `seo/` — `metadata.ts` and `jsonLd.ts`; security headers and
+  a CSP in `next.config.ts`.
+  Two decisions worth remembering. **Facets constrain a variant, not a product** — "M" plus
+  "blue" must mean a blue M exists, so filters run over the variant list and a product survives
+  only if something is left. And **a facet is never counted against itself**, which is the
+  difference between a working filter rail and the familiar broken one where every unticked
+  option reads zero.
+  The listing is served from one cached catalog read per request rather than a query per facet,
+  because SQL cannot order by a price that falls back to the product MRP. That trade has a
+  ceiling and `loadCatalogIndex` is the seam where J9 replaces it.
+  Owner's decision this session, now §2 "Build order — stub the outside world first": the entire
+  customer journey gets built against stub adapters before any provider is connected. J4–J7
+  retitled accordingly; real integrations become J11, one provider per commit.
+  **Not done, and the exact next action:** the storefront components
+  (`src/components/{ui,layout,catalog,product}/`) and the sample-image seed were still being
+  written when the session ended, so `src/components/catalog/ListingView.tsx` and the four routes
+  under `src/app/(storefront)/` are committed but **do not typecheck yet** — they import
+  components that do not exist. Next session: land those components, then run `npm run check`
+  until green and mark J3 `[x]`. `npm run check` has NOT been run this session; `npm test` is
+  green at 741.
