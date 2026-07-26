@@ -6,8 +6,9 @@ import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { buildConfig } from 'payload'
 import sharp from 'sharp'
 
-import { Media } from './collections/Media'
+import { collections } from './collections'
 import { Users } from './collections/Users'
+import { Settings } from './globals/Settings'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -22,7 +23,8 @@ export default buildConfig({
       titleSuffix: ' · Threadline',
     },
   },
-  collections: [Users, Media],
+  collections,
+  globals: [Settings],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
@@ -32,6 +34,7 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
     },
+    migrationDir: path.resolve(dirname, 'migrations'),
   }),
   sharp,
   // OWASP A05 (Security Misconfiguration) — never leak internals to API consumers in production.

@@ -64,11 +64,33 @@ export type SupportedTimezones =
 export interface Config {
   auth: {
     users: UserAuthOperations;
+    customers: CustomerAuthOperations;
   };
   blocks: {};
   collections: {
-    users: User;
+    categories: Category;
+    sizes: Size;
+    colours: Colour;
+    sizeCharts: SizeChart;
+    products: Product;
+    variants: Variant;
+    stockMovements: StockMovement;
     media: Media;
+    users: User;
+    customers: Customer;
+    addresses: Address;
+    carts: Cart;
+    orders: Order;
+    orderItems: OrderItem;
+    orderEvents: OrderEvent;
+    coupons: Coupon;
+    returns: Return;
+    loyaltyTransactions: LoyaltyTransaction;
+    reviews: Review;
+    wishlists: Wishlist;
+    tickets: Ticket;
+    chatSessions: ChatSession;
+    notifications: Notification;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -76,8 +98,29 @@ export interface Config {
   };
   collectionsJoins: {};
   collectionsSelect: {
-    users: UsersSelect<false> | UsersSelect<true>;
+    categories: CategoriesSelect<false> | CategoriesSelect<true>;
+    sizes: SizesSelect<false> | SizesSelect<true>;
+    colours: ColoursSelect<false> | ColoursSelect<true>;
+    sizeCharts: SizeChartsSelect<false> | SizeChartsSelect<true>;
+    products: ProductsSelect<false> | ProductsSelect<true>;
+    variants: VariantsSelect<false> | VariantsSelect<true>;
+    stockMovements: StockMovementsSelect<false> | StockMovementsSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    users: UsersSelect<false> | UsersSelect<true>;
+    customers: CustomersSelect<false> | CustomersSelect<true>;
+    addresses: AddressesSelect<false> | AddressesSelect<true>;
+    carts: CartsSelect<false> | CartsSelect<true>;
+    orders: OrdersSelect<false> | OrdersSelect<true>;
+    orderItems: OrderItemsSelect<false> | OrderItemsSelect<true>;
+    orderEvents: OrderEventsSelect<false> | OrderEventsSelect<true>;
+    coupons: CouponsSelect<false> | CouponsSelect<true>;
+    returns: ReturnsSelect<false> | ReturnsSelect<true>;
+    loyaltyTransactions: LoyaltyTransactionsSelect<false> | LoyaltyTransactionsSelect<true>;
+    reviews: ReviewsSelect<false> | ReviewsSelect<true>;
+    wishlists: WishlistsSelect<false> | WishlistsSelect<true>;
+    tickets: TicketsSelect<false> | TicketsSelect<true>;
+    chatSessions: ChatSessionsSelect<false> | ChatSessionsSelect<true>;
+    notifications: NotificationsSelect<false> | NotificationsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -87,13 +130,17 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    settings: Setting;
+  };
+  globalsSelect: {
+    settings: SettingsSelect<false> | SettingsSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
   };
-  user: User;
+  user: User | Customer;
   jobs: {
     tasks: unknown;
     workflows: unknown;
@@ -117,30 +164,104 @@ export interface UserAuthOperations {
     password: string;
   };
 }
+export interface CustomerAuthOperations {
+  forgotPassword: {
+    email: string;
+    password: string;
+  };
+  login: {
+    email: string;
+    password: string;
+  };
+  registerFirstUser: {
+    email: string;
+    password: string;
+  };
+  unlock: {
+    email: string;
+    password: string;
+  };
+}
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "users".
+ * via the `definition` "categories".
  */
-export interface User {
+export interface Category {
   id: number;
+  title: string;
+  /**
+   * Appears in the URL. Generated from the title; changing it breaks existing links.
+   */
+  slug: string;
+  /**
+   * Leave empty for a top-level category.
+   */
+  parent?: (number | null) | Category;
+  /**
+   * Which set of sizes products in this category use.
+   */
+  sizeGroup: 'topwear' | 'bottomwear' | 'kids' | 'footwear' | 'free';
+  /**
+   * Shown in the size guide on every product in this category.
+   */
+  sizeChart?: (number | null) | SizeChart;
+  image?: (number | null) | Media;
+  description?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  /**
+   * Overrides the generated metadata. Leave blank to use the title and description.
+   */
+  seo?: {
+    title?: string | null;
+    description?: string | null;
+    ogImage?: (number | null) | Media;
+  };
+  /**
+   * Lower numbers sort first.
+   */
+  sortOrder?: number | null;
+  isActive?: boolean | null;
   updatedAt: string;
   createdAt: string;
-  email: string;
-  resetPasswordToken?: string | null;
-  resetPasswordExpiration?: string | null;
-  salt?: string | null;
-  hash?: string | null;
-  loginAttempts?: number | null;
-  lockUntil?: string | null;
-  sessions?:
-    | {
-        id: string;
-        createdAt?: string | null;
-        expiresAt: string;
-      }[]
-    | null;
-  password?: string | null;
-  collection: 'users';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sizeCharts".
+ */
+export interface SizeChart {
+  id: number;
+  title: string;
+  group: 'topwear' | 'bottomwear' | 'kids' | 'footwear' | 'free';
+  /**
+   * One row per size, in the order they should appear.
+   */
+  measurements: {
+    sizeLabel: string;
+    chestIn?: number | null;
+    waistIn?: number | null;
+    lengthIn?: number | null;
+    shoulderIn?: number | null;
+    id?: string | null;
+  }[];
+  /**
+   * e.g. “Measurements are of the garment, not the body.”
+   */
+  notes?: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -163,6 +284,841 @@ export interface Media {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+}
+/**
+ * sortOrder is what makes size pills render S, M, L, XL instead of alphabetically.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sizes".
+ */
+export interface Size {
+  id: number;
+  /**
+   * As it appears on the size pill: S, XL, 32, 4-5Y.
+   */
+  label: string;
+  /**
+   * Must match the category’s size group for the size to be offered.
+   */
+  group: 'topwear' | 'bottomwear' | 'kids' | 'footwear' | 'free';
+  /**
+   * Small to large. Required — this is the display order on the product page.
+   */
+  sortOrder?: number | null;
+  isActive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "colours".
+ */
+export interface Colour {
+  id: number;
+  name: string;
+  /**
+   * Appears in the URL. Generated from the title; changing it breaks existing links.
+   */
+  slug: string;
+  /**
+   * The swatch colour, e.g. #1b2a4a.
+   */
+  hex: string;
+  /**
+   * Lower numbers sort first.
+   */
+  sortOrder?: number | null;
+  isActive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * The style. Sizes and colours live in Variants.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "products".
+ */
+export interface Product {
+  id: number;
+  title: string;
+  /**
+   * Appears in the URL. Generated from the title; changing it breaks existing links.
+   */
+  slug: string;
+  category: number | Category;
+  description?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  /**
+   * e.g. “100% combed cotton, 180 GSM”.
+   */
+  fabric?: string | null;
+  /**
+   * e.g. “Machine wash cold, do not tumble dry”.
+   */
+  careInstructions?: string | null;
+  /**
+   * e.g. “Relaxed fit — size down for a slimmer look”.
+   */
+  fitNotes?: string | null;
+  /**
+   * Default selling price for every variant that does not set its own. Amount in paise — ₹499 is 49900.
+   */
+  mrp: number;
+  /**
+   * GST slab for this product. Indian apparel is 5% under ₹1000 and 12% above.
+   */
+  taxRatePct: number;
+  /**
+   * Tag each image with its colour — the gallery filters to the selected swatch.
+   */
+  gallery?:
+    | {
+        image: number | Media;
+        colour?: (number | null) | Colour;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Only “active” products appear on the storefront.
+   */
+  status: 'draft' | 'active' | 'archived';
+  /**
+   * Shows in the featured row on the home page.
+   */
+  featured?: boolean | null;
+  /**
+   * Overrides the generated metadata. Leave blank to use the title and description.
+   */
+  seo?: {
+    title?: string | null;
+    description?: string | null;
+    ogImage?: (number | null) | Media;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This is what sells. Adjust stock through Stock Movements, never here.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "variants".
+ */
+export interface Variant {
+  id: number;
+  product: number | Product;
+  size: number | Size;
+  colour: number | Colour;
+  /**
+   * Generated as PRODUCT-COLOUR-SIZE on create. Changing it after picking has started will confuse the warehouse.
+   */
+  sku: string;
+  /**
+   * Overrides the product MRP for this variant only. Amount in paise — ₹499 is 49900.
+   */
+  price?: number | null;
+  /**
+   * Shown struck through beside the price. Amount in paise — ₹499 is 49900.
+   */
+  compareAtPrice?: number | null;
+  /**
+   * Sum of this variant’s stock movements. Add a movement to change it.
+   */
+  stockQty?: number | null;
+  /**
+   * Units held by checkouts in progress. Available to sell = stock − reserved.
+   */
+  reservedQty?: number | null;
+  barcode?: string | null;
+  /**
+   * Required by Shiprocket to rate a shipment.
+   */
+  weightGrams?: number | null;
+  isActive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Append-only. Rows cannot be edited or deleted — correct a mistake with an “adjust”.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "stockMovements".
+ */
+export interface StockMovement {
+  id: number;
+  variant: number | Variant;
+  /**
+   * “in” and “return” add stock, “out” and “damage” remove it, “adjust” applies the sign you enter.
+   */
+  type: 'in' | 'out' | 'adjust' | 'return' | 'damage';
+  /**
+   * Units moved. Negative is only meaningful for “adjust”.
+   */
+  qty: number;
+  /**
+   * Why the stock moved — “Supplier delivery #4412”, “Stock count correction”.
+   */
+  reason: string;
+  /**
+   * Set automatically when the movement came from an order.
+   */
+  order?: (number | null) | Order;
+  /**
+   * Who made the movement. Blank means the system did.
+   */
+  actor?: (number | null) | User;
+  /**
+   * The signed effect this row has on stock.
+   */
+  effect?: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orders".
+ */
+export interface Order {
+  id: number;
+  /**
+   * Human-readable reference the customer quotes to support.
+   */
+  orderNumber: string;
+  customer?: (number | null) | Customer;
+  /**
+   * Captured at checkout — guests have no customer record.
+   */
+  email: string;
+  phone?: string | null;
+  /**
+   * Copied from the address book when the order was placed. Historical record.
+   */
+  shippingAddress?: {
+    name?: string | null;
+    phone?: string | null;
+    line1?: string | null;
+    line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    country?: string | null;
+  };
+  /**
+   * Copied from the address book when the order was placed. Historical record.
+   */
+  billingAddress?: {
+    name?: string | null;
+    phone?: string | null;
+    line1?: string | null;
+    line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    country?: string | null;
+  };
+  /**
+   * Transitions are validated in lib/orders. Illegal jumps are rejected.
+   */
+  status:
+    | 'pending'
+    | 'confirmed'
+    | 'packed'
+    | 'shipped'
+    | 'out_for_delivery'
+    | 'delivered'
+    | 'cancelled'
+    | 'rto'
+    | 'payment_failed'
+    | 'returned'
+    | 'refunded';
+  paymentMethod: 'razorpay' | 'cod';
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+  razorpayOrderId?: string | null;
+  razorpayPaymentId?: string | null;
+  /**
+   * Amount in paise — ₹499 is 49900.
+   */
+  subtotal: number;
+  /**
+   * Amount in paise — ₹499 is 49900.
+   */
+  shipping: number;
+  /**
+   * Amount in paise — ₹499 is 49900.
+   */
+  taxTotal: number;
+  /**
+   * From the coupon. Amount in paise — ₹499 is 49900.
+   */
+  discount: number;
+  /**
+   * From redeemed points. Amount in paise — ₹499 is 49900.
+   */
+  loyaltyDiscount: number;
+  /**
+   * What was actually charged. Amount in paise — ₹499 is 49900.
+   */
+  grandTotal: number;
+  /**
+   * CGST+SGST within the seller’s state, IGST across states. Never both.
+   */
+  taxBreakup?: {
+    /**
+     * Amount in paise — ₹499 is 49900.
+     */
+    cgst?: number | null;
+    /**
+     * Amount in paise — ₹499 is 49900.
+     */
+    sgst?: number | null;
+    /**
+     * Amount in paise — ₹499 is 49900.
+     */
+    igst?: number | null;
+  };
+  coupon?: (number | null) | Coupon;
+  shiprocketOrderId?: string | null;
+  /**
+   * Air waybill — the tracking number.
+   */
+  awbCode?: string | null;
+  courier?: string | null;
+  placedAt?: string | null;
+  deliveredAt?: string | null;
+  cancelledAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "customers".
+ */
+export interface Customer {
+  id: number;
+  name: string;
+  /**
+   * Ten digits, used for delivery updates and WhatsApp.
+   */
+  phone?: string | null;
+  /**
+   * Consent for WhatsApp order updates. Never assume it.
+   */
+  whatsappOptIn?: boolean | null;
+  /**
+   * Balance derived from loyalty transactions. Never edited directly.
+   */
+  loyaltyPoints?: number | null;
+  emailVerified?: boolean | null;
+  lastSeenAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  email: string;
+  resetPasswordToken?: string | null;
+  resetPasswordExpiration?: string | null;
+  salt?: string | null;
+  hash?: string | null;
+  loginAttempts?: number | null;
+  lockUntil?: string | null;
+  sessions?:
+    | {
+        id: string;
+        createdAt?: string | null;
+        expiresAt: string;
+      }[]
+    | null;
+  password?: string | null;
+  collection: 'customers';
+}
+/**
+ * Never publicly listed. Codes are validated server-side, one at a time.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "coupons".
+ */
+export interface Coupon {
+  id: number;
+  /**
+   * Stored uppercase so “welcome10” and “WELCOME10” are the same coupon.
+   */
+  code: string;
+  type: 'percent' | 'flat' | 'free_shipping';
+  /**
+   * A percentage for “percent”; paise for “flat”; ignored for free shipping.
+   */
+  value: number;
+  /**
+   * Below this the code does not apply. Amount in paise — ₹499 is 49900.
+   */
+  minCartValue?: number | null;
+  /**
+   * Caps a percentage discount. Amount in paise — ₹499 is 49900.
+   */
+  maxDiscount?: number | null;
+  /**
+   * Total redemptions allowed. Empty means unlimited.
+   */
+  limitTotal?: number | null;
+  limitPerUser?: number | null;
+  /**
+   * Maintained by the system. Not editable.
+   */
+  usedCount?: number | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  appliesTo: 'all' | 'categories' | 'products';
+  categories?: (number | Category)[] | null;
+  products?: (number | Product)[] | null;
+  /**
+   * Whether this code may be combined with another.
+   */
+  stackable?: boolean | null;
+  isActive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "users".
+ */
+export interface User {
+  id: number;
+  name: string;
+  /**
+   * What this account may do. Only a super_admin can change it.
+   */
+  role: 'super_admin' | 'catalog_manager' | 'order_manager' | 'support_agent' | 'marketing';
+  isActive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+  email: string;
+  resetPasswordToken?: string | null;
+  resetPasswordExpiration?: string | null;
+  salt?: string | null;
+  hash?: string | null;
+  loginAttempts?: number | null;
+  lockUntil?: string | null;
+  sessions?:
+    | {
+        id: string;
+        createdAt?: string | null;
+        expiresAt: string;
+      }[]
+    | null;
+  password?: string | null;
+  collection: 'users';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "addresses".
+ */
+export interface Address {
+  id: number;
+  customer: number | Customer;
+  /**
+   * How the customer recognises it — Home, Office.
+   */
+  label: string;
+  /**
+   * Recipient name.
+   */
+  name: string;
+  phone: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  /**
+   * Decides CGST+SGST vs IGST at checkout.
+   */
+  state: string;
+  pincode: string;
+  country: string;
+  isDefault?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "carts".
+ */
+export interface Cart {
+  id: number;
+  /**
+   * Empty while the shopper is a guest.
+   */
+  customer?: (number | null) | Customer;
+  /**
+   * Opaque cookie value. The only handle a guest cart has.
+   */
+  sessionId: string;
+  items?:
+    | {
+        variant: number | Variant;
+        qty: number;
+        /**
+         * What the shopper saw when they added it. Checkout re-prices from the variant. Amount in paise — ₹499 is 49900.
+         */
+        priceAtAdd: number;
+        id?: string | null;
+      }[]
+    | null;
+  coupon?: (number | null) | Coupon;
+  /**
+   * Swept by the scheduler. Releases any reserved stock.
+   */
+  expiresAt?: string | null;
+  /**
+   * Set when the recovery email went out, so it only goes out once.
+   */
+  abandonedNotifiedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * A frozen copy of what was bought. Not editable.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orderItems".
+ */
+export interface OrderItem {
+  id: number;
+  order: number | Order;
+  /**
+   * Reference only — for returns and reporting. Never read for display.
+   */
+  variant?: (number | null) | Variant;
+  sku: string;
+  productTitle: string;
+  sizeLabel: string;
+  colourName: string;
+  image?: (number | null) | Media;
+  qty: number;
+  /**
+   * Amount in paise — ₹499 is 49900.
+   */
+  unitPrice: number;
+  taxRatePct: number;
+  /**
+   * Amount in paise — ₹499 is 49900.
+   */
+  taxAmount: number;
+  /**
+   * unitPrice × qty, plus tax. Amount in paise — ₹499 is 49900.
+   */
+  lineTotal: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Append-only status history. Drives the customer’s order timeline.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orderEvents".
+ */
+export interface OrderEvent {
+  id: number;
+  order: number | Order;
+  /**
+   * Empty for the first event, when the order was created.
+   */
+  fromStatus?:
+    | (
+        | 'pending'
+        | 'confirmed'
+        | 'packed'
+        | 'shipped'
+        | 'out_for_delivery'
+        | 'delivered'
+        | 'cancelled'
+        | 'rto'
+        | 'payment_failed'
+        | 'returned'
+        | 'refunded'
+      )
+    | null;
+  toStatus:
+    | 'pending'
+    | 'confirmed'
+    | 'packed'
+    | 'shipped'
+    | 'out_for_delivery'
+    | 'delivered'
+    | 'cancelled'
+    | 'rto'
+    | 'payment_failed'
+    | 'returned'
+    | 'refunded';
+  source: 'staff' | 'customer' | 'webhook' | 'system';
+  /**
+   * Set when a staff member caused the change.
+   */
+  actor?: (number | null) | User;
+  /**
+   * Short reason. Never put payment details or PII here.
+   */
+  note?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "returns".
+ */
+export interface Return {
+  id: number;
+  order: number | Order;
+  type: 'return' | 'exchange';
+  items: {
+    orderItem: number | OrderItem;
+    qty: number;
+    /**
+     * Fit reasons feed the “runs small” hint on the product page.
+     */
+    reason: 'too_small' | 'too_large' | 'not_as_described' | 'damaged' | 'wrong_item' | 'changed_mind';
+    id?: string | null;
+  }[];
+  /**
+   * The size or colour the customer wants instead.
+   */
+  exchangeVariant?: (number | null) | Variant;
+  status: 'requested' | 'approved' | 'picked_up' | 'received' | 'refunded' | 'rejected' | 'exchange_shipped';
+  /**
+   * Set when the return is approved. Amount in paise — ₹499 is 49900.
+   */
+  refundAmount?: number | null;
+  /**
+   * Reverse-pickup tracking number.
+   */
+  pickupAwb?: string | null;
+  /**
+   * What the customer told us. Visible to them.
+   */
+  customerNote?: string | null;
+  /**
+   * Internal. Never shown to the customer.
+   */
+  adminNote?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Append-only. The customer’s balance is the sum of these rows.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "loyaltyTransactions".
+ */
+export interface LoyaltyTransaction {
+  id: number;
+  customer: number | Customer;
+  order?: (number | null) | Order;
+  /**
+   * Signed. Positive to award, negative to redeem or reverse.
+   */
+  points: number;
+  type: 'earn' | 'redeem' | 'expire' | 'reverse';
+  /**
+   * Earned points expire a year out. Swept by the scheduler.
+   */
+  expiresAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reviews".
+ */
+export interface Review {
+  id: number;
+  product: number | Product;
+  customer: number | Customer;
+  /**
+   * Present means “verified purchase”.
+   */
+  order?: (number | null) | Order;
+  rating: number;
+  title?: string | null;
+  body: string;
+  photos?:
+    | {
+        image: number | Media;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Aggregated into the sizing hint on the product page.
+   */
+  fitFeedback?: ('runs_small' | 'true_to_size' | 'runs_large') | null;
+  /**
+   * Only “approved” reviews are public.
+   */
+  status: 'pending' | 'approved' | 'rejected';
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "wishlists".
+ */
+export interface Wishlist {
+  id: number;
+  customer: number | Customer;
+  variant: number | Variant;
+  /**
+   * Email and WhatsApp the customer when this variant is back in stock.
+   */
+  notifyOnRestock?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tickets".
+ */
+export interface Ticket {
+  id: number;
+  /**
+   * The reference the customer quotes.
+   */
+  ticketNumber: string;
+  customer: number | Customer;
+  /**
+   * Attached when the request is about a specific order.
+   */
+  order?: (number | null) | Order;
+  subject: string;
+  category: 'order' | 'return' | 'product' | 'payment' | 'other';
+  status: 'open' | 'pending_customer' | 'resolved' | 'closed';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  /**
+   * Unassigned tickets are nobody’s job.
+   */
+  assignedTo?: (number | null) | User;
+  messages?:
+    | {
+        /**
+         * Display name shown on the message.
+         */
+        author: string;
+        authorType: 'customer' | 'agent' | 'bot';
+        body: string;
+        attachments?:
+          | {
+              file: number | Media;
+              id?: string | null;
+            }[]
+          | null;
+        sentAt: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * The assistant handed this over. Worth reading to improve its prompts.
+   */
+  escalatedFromBot?: boolean | null;
+  /**
+   * When an agent first replied. Drives response-time reporting.
+   */
+  firstResponseAt?: string | null;
+  resolvedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Written by the chat endpoint. Read-only here.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chatSessions".
+ */
+export interface ChatSession {
+  id: number;
+  sessionId: string;
+  /**
+   * Empty for an anonymous visitor — who therefore gets no order data.
+   */
+  customer?: (number | null) | Customer;
+  messages?:
+    | {
+        role: 'user' | 'assistant';
+        content: string;
+        tokensIn?: number | null;
+        tokensOut?: number | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Which catalog and order data was injected. Never store raw PII here.
+   */
+  contextUsed?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Set when the assistant escalated to a human.
+   */
+  handedOffTo?: (number | null) | Ticket;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Written by the notification dispatcher. Read-only.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "notifications".
+ */
+export interface Notification {
+  id: number;
+  channel: 'email' | 'whatsapp';
+  /**
+   * The dispatched event name, e.g. “order.shipped”.
+   */
+  event: string;
+  /**
+   * Email address or phone number the message went to.
+   */
+  recipient: string;
+  templateKey: string;
+  /**
+   * Template variables only. Never tokens, card data or a full address.
+   */
+  payload?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'queued' | 'sent' | 'delivered' | 'failed' | 'read';
+  /**
+   * The provider’s message id. How a delivery webhook finds this row.
+   */
+  providerId?: string | null;
+  /**
+   * Why it failed. A failure never blocks the order flow.
+   */
+  error?: string | null;
+  sentAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -189,18 +1145,107 @@ export interface PayloadLockedDocument {
   id: number;
   document?:
     | ({
-        relationTo: 'users';
-        value: number | User;
+        relationTo: 'categories';
+        value: number | Category;
+      } | null)
+    | ({
+        relationTo: 'sizes';
+        value: number | Size;
+      } | null)
+    | ({
+        relationTo: 'colours';
+        value: number | Colour;
+      } | null)
+    | ({
+        relationTo: 'sizeCharts';
+        value: number | SizeChart;
+      } | null)
+    | ({
+        relationTo: 'products';
+        value: number | Product;
+      } | null)
+    | ({
+        relationTo: 'variants';
+        value: number | Variant;
+      } | null)
+    | ({
+        relationTo: 'stockMovements';
+        value: number | StockMovement;
       } | null)
     | ({
         relationTo: 'media';
         value: number | Media;
+      } | null)
+    | ({
+        relationTo: 'users';
+        value: number | User;
+      } | null)
+    | ({
+        relationTo: 'customers';
+        value: number | Customer;
+      } | null)
+    | ({
+        relationTo: 'addresses';
+        value: number | Address;
+      } | null)
+    | ({
+        relationTo: 'carts';
+        value: number | Cart;
+      } | null)
+    | ({
+        relationTo: 'orders';
+        value: number | Order;
+      } | null)
+    | ({
+        relationTo: 'orderItems';
+        value: number | OrderItem;
+      } | null)
+    | ({
+        relationTo: 'orderEvents';
+        value: number | OrderEvent;
+      } | null)
+    | ({
+        relationTo: 'coupons';
+        value: number | Coupon;
+      } | null)
+    | ({
+        relationTo: 'returns';
+        value: number | Return;
+      } | null)
+    | ({
+        relationTo: 'loyaltyTransactions';
+        value: number | LoyaltyTransaction;
+      } | null)
+    | ({
+        relationTo: 'reviews';
+        value: number | Review;
+      } | null)
+    | ({
+        relationTo: 'wishlists';
+        value: number | Wishlist;
+      } | null)
+    | ({
+        relationTo: 'tickets';
+        value: number | Ticket;
+      } | null)
+    | ({
+        relationTo: 'chatSessions';
+        value: number | ChatSession;
+      } | null)
+    | ({
+        relationTo: 'notifications';
+        value: number | Notification;
       } | null);
   globalSlug?: string | null;
-  user: {
-    relationTo: 'users';
-    value: number | User;
-  };
+  user:
+    | {
+        relationTo: 'users';
+        value: number | User;
+      }
+    | {
+        relationTo: 'customers';
+        value: number | Customer;
+      };
   updatedAt: string;
   createdAt: string;
 }
@@ -210,10 +1255,15 @@ export interface PayloadLockedDocument {
  */
 export interface PayloadPreference {
   id: number;
-  user: {
-    relationTo: 'users';
-    value: number | User;
-  };
+  user:
+    | {
+        relationTo: 'users';
+        value: number | User;
+      }
+    | {
+        relationTo: 'customers';
+        value: number | Customer;
+      };
   key?: string | null;
   value?:
     | {
@@ -240,9 +1290,167 @@ export interface PayloadMigration {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories_select".
+ */
+export interface CategoriesSelect<T extends boolean = true> {
+  title?: T;
+  slug?: T;
+  parent?: T;
+  sizeGroup?: T;
+  sizeChart?: T;
+  image?: T;
+  description?: T;
+  seo?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        ogImage?: T;
+      };
+  sortOrder?: T;
+  isActive?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sizes_select".
+ */
+export interface SizesSelect<T extends boolean = true> {
+  label?: T;
+  group?: T;
+  sortOrder?: T;
+  isActive?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "colours_select".
+ */
+export interface ColoursSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  hex?: T;
+  sortOrder?: T;
+  isActive?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sizeCharts_select".
+ */
+export interface SizeChartsSelect<T extends boolean = true> {
+  title?: T;
+  group?: T;
+  measurements?:
+    | T
+    | {
+        sizeLabel?: T;
+        chestIn?: T;
+        waistIn?: T;
+        lengthIn?: T;
+        shoulderIn?: T;
+        id?: T;
+      };
+  notes?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "products_select".
+ */
+export interface ProductsSelect<T extends boolean = true> {
+  title?: T;
+  slug?: T;
+  category?: T;
+  description?: T;
+  fabric?: T;
+  careInstructions?: T;
+  fitNotes?: T;
+  mrp?: T;
+  taxRatePct?: T;
+  gallery?:
+    | T
+    | {
+        image?: T;
+        colour?: T;
+        id?: T;
+      };
+  status?: T;
+  featured?: T;
+  seo?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        ogImage?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "variants_select".
+ */
+export interface VariantsSelect<T extends boolean = true> {
+  product?: T;
+  size?: T;
+  colour?: T;
+  sku?: T;
+  price?: T;
+  compareAtPrice?: T;
+  stockQty?: T;
+  reservedQty?: T;
+  barcode?: T;
+  weightGrams?: T;
+  isActive?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "stockMovements_select".
+ */
+export interface StockMovementsSelect<T extends boolean = true> {
+  variant?: T;
+  type?: T;
+  qty?: T;
+  reason?: T;
+  order?: T;
+  actor?: T;
+  effect?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "media_select".
+ */
+export interface MediaSelect<T extends boolean = true> {
+  alt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  name?: T;
+  role?: T;
+  isActive?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -262,21 +1470,333 @@ export interface UsersSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "media_select".
+ * via the `definition` "customers_select".
  */
-export interface MediaSelect<T extends boolean = true> {
-  alt?: T;
+export interface CustomersSelect<T extends boolean = true> {
+  name?: T;
+  phone?: T;
+  whatsappOptIn?: T;
+  loyaltyPoints?: T;
+  emailVerified?: T;
+  lastSeenAt?: T;
   updatedAt?: T;
   createdAt?: T;
-  url?: T;
-  thumbnailURL?: T;
-  filename?: T;
-  mimeType?: T;
-  filesize?: T;
-  width?: T;
-  height?: T;
-  focalX?: T;
-  focalY?: T;
+  email?: T;
+  resetPasswordToken?: T;
+  resetPasswordExpiration?: T;
+  salt?: T;
+  hash?: T;
+  loginAttempts?: T;
+  lockUntil?: T;
+  sessions?:
+    | T
+    | {
+        id?: T;
+        createdAt?: T;
+        expiresAt?: T;
+      };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "addresses_select".
+ */
+export interface AddressesSelect<T extends boolean = true> {
+  customer?: T;
+  label?: T;
+  name?: T;
+  phone?: T;
+  line1?: T;
+  line2?: T;
+  city?: T;
+  state?: T;
+  pincode?: T;
+  country?: T;
+  isDefault?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "carts_select".
+ */
+export interface CartsSelect<T extends boolean = true> {
+  customer?: T;
+  sessionId?: T;
+  items?:
+    | T
+    | {
+        variant?: T;
+        qty?: T;
+        priceAtAdd?: T;
+        id?: T;
+      };
+  coupon?: T;
+  expiresAt?: T;
+  abandonedNotifiedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orders_select".
+ */
+export interface OrdersSelect<T extends boolean = true> {
+  orderNumber?: T;
+  customer?: T;
+  email?: T;
+  phone?: T;
+  shippingAddress?:
+    | T
+    | {
+        name?: T;
+        phone?: T;
+        line1?: T;
+        line2?: T;
+        city?: T;
+        state?: T;
+        pincode?: T;
+        country?: T;
+      };
+  billingAddress?:
+    | T
+    | {
+        name?: T;
+        phone?: T;
+        line1?: T;
+        line2?: T;
+        city?: T;
+        state?: T;
+        pincode?: T;
+        country?: T;
+      };
+  status?: T;
+  paymentMethod?: T;
+  paymentStatus?: T;
+  razorpayOrderId?: T;
+  razorpayPaymentId?: T;
+  subtotal?: T;
+  shipping?: T;
+  taxTotal?: T;
+  discount?: T;
+  loyaltyDiscount?: T;
+  grandTotal?: T;
+  taxBreakup?:
+    | T
+    | {
+        cgst?: T;
+        sgst?: T;
+        igst?: T;
+      };
+  coupon?: T;
+  shiprocketOrderId?: T;
+  awbCode?: T;
+  courier?: T;
+  placedAt?: T;
+  deliveredAt?: T;
+  cancelledAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orderItems_select".
+ */
+export interface OrderItemsSelect<T extends boolean = true> {
+  order?: T;
+  variant?: T;
+  sku?: T;
+  productTitle?: T;
+  sizeLabel?: T;
+  colourName?: T;
+  image?: T;
+  qty?: T;
+  unitPrice?: T;
+  taxRatePct?: T;
+  taxAmount?: T;
+  lineTotal?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orderEvents_select".
+ */
+export interface OrderEventsSelect<T extends boolean = true> {
+  order?: T;
+  fromStatus?: T;
+  toStatus?: T;
+  source?: T;
+  actor?: T;
+  note?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "coupons_select".
+ */
+export interface CouponsSelect<T extends boolean = true> {
+  code?: T;
+  type?: T;
+  value?: T;
+  minCartValue?: T;
+  maxDiscount?: T;
+  limitTotal?: T;
+  limitPerUser?: T;
+  usedCount?: T;
+  startsAt?: T;
+  endsAt?: T;
+  appliesTo?: T;
+  categories?: T;
+  products?: T;
+  stackable?: T;
+  isActive?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "returns_select".
+ */
+export interface ReturnsSelect<T extends boolean = true> {
+  order?: T;
+  type?: T;
+  items?:
+    | T
+    | {
+        orderItem?: T;
+        qty?: T;
+        reason?: T;
+        id?: T;
+      };
+  exchangeVariant?: T;
+  status?: T;
+  refundAmount?: T;
+  pickupAwb?: T;
+  customerNote?: T;
+  adminNote?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "loyaltyTransactions_select".
+ */
+export interface LoyaltyTransactionsSelect<T extends boolean = true> {
+  customer?: T;
+  order?: T;
+  points?: T;
+  type?: T;
+  expiresAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reviews_select".
+ */
+export interface ReviewsSelect<T extends boolean = true> {
+  product?: T;
+  customer?: T;
+  order?: T;
+  rating?: T;
+  title?: T;
+  body?: T;
+  photos?:
+    | T
+    | {
+        image?: T;
+        id?: T;
+      };
+  fitFeedback?: T;
+  status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "wishlists_select".
+ */
+export interface WishlistsSelect<T extends boolean = true> {
+  customer?: T;
+  variant?: T;
+  notifyOnRestock?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tickets_select".
+ */
+export interface TicketsSelect<T extends boolean = true> {
+  ticketNumber?: T;
+  customer?: T;
+  order?: T;
+  subject?: T;
+  category?: T;
+  status?: T;
+  priority?: T;
+  assignedTo?: T;
+  messages?:
+    | T
+    | {
+        author?: T;
+        authorType?: T;
+        body?: T;
+        attachments?:
+          | T
+          | {
+              file?: T;
+              id?: T;
+            };
+        sentAt?: T;
+        id?: T;
+      };
+  escalatedFromBot?: T;
+  firstResponseAt?: T;
+  resolvedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chatSessions_select".
+ */
+export interface ChatSessionsSelect<T extends boolean = true> {
+  sessionId?: T;
+  customer?: T;
+  messages?:
+    | T
+    | {
+        role?: T;
+        content?: T;
+        tokensIn?: T;
+        tokensOut?: T;
+        id?: T;
+      };
+  contextUsed?: T;
+  handedOffTo?: T;
+  startedAt?: T;
+  endedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "notifications_select".
+ */
+export interface NotificationsSelect<T extends boolean = true> {
+  channel?: T;
+  event?: T;
+  recipient?: T;
+  templateKey?: T;
+  payload?: T;
+  status?: T;
+  providerId?: T;
+  error?: T;
+  sentAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -317,6 +1837,91 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * Store-wide rules. Changing these takes effect immediately, with no deploy.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "settings".
+ */
+export interface Setting {
+  id: number;
+  /**
+   * Carts at or above this ship free. Amount in paise — ₹499 is 49900.
+   */
+  freeShippingThreshold: number;
+  /**
+   * Charged when the cart is below the threshold. Amount in paise — ₹499 is 49900.
+   */
+  flatShippingRate: number;
+  codEnabled?: boolean | null;
+  /**
+   * Extra charge for paying on delivery. Amount in paise — ₹499 is 49900.
+   */
+  codFee?: number | null;
+  /**
+   * Days after delivery in which a return may be raised.
+   */
+  returnWindowDays: number;
+  returnShippingPaidBy: 'store' | 'customer';
+  /**
+   * The seller’s state. An order shipping here is CGST+SGST; anywhere else is IGST.
+   */
+  companyState: string;
+  /**
+   * Printed on invoices.
+   */
+  gstin?: string | null;
+  supportEmail: string;
+  supportPhone?: string | null;
+  /**
+   * Whether the opt-in box is pre-ticked at checkout.
+   */
+  whatsappOptInDefault?: boolean | null;
+  loyaltyEnabled?: boolean | null;
+  /**
+   * Points awarded per ₹1 of subtotal, on delivery.
+   */
+  loyaltyEarnPerRupee?: number | null;
+  /**
+   * The most of a cart that points may pay for.
+   */
+  loyaltyMaxRedeemPct?: number | null;
+  /**
+   * Fewest points that may be redeemed at once.
+   */
+  loyaltyMinRedeem?: number | null;
+  /**
+   * Takes the storefront offline. The admin stays reachable.
+   */
+  maintenanceMode?: boolean | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "settings_select".
+ */
+export interface SettingsSelect<T extends boolean = true> {
+  freeShippingThreshold?: T;
+  flatShippingRate?: T;
+  codEnabled?: T;
+  codFee?: T;
+  returnWindowDays?: T;
+  returnShippingPaidBy?: T;
+  companyState?: T;
+  gstin?: T;
+  supportEmail?: T;
+  supportPhone?: T;
+  whatsappOptInDefault?: T;
+  loyaltyEnabled?: T;
+  loyaltyEarnPerRupee?: T;
+  loyaltyMaxRedeemPct?: T;
+  loyaltyMinRedeem?: T;
+  maintenanceMode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
