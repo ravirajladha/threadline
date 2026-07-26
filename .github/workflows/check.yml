@@ -1,0 +1,50 @@
+# The gate.
+#
+# CLAUDE.md §5 says no stage ships until `npm run check` passes. Until now that was a rule
+# somebody had to remember; this is the same rule, enforced by something that does not forget.
+#
+# It runs on every push and every pull request, and it is deliberately the *whole* check —
+# typecheck, lint and the full unit suite — rather than a faster subset. The four lint errors
+# currently in VariantPicker are exactly the class of defect a typecheck-only gate waves through,
+# which is the argument for running the real command here.
+#
+# Free for this repository: GitHub Actions bills nothing for public repos.
+#
+# No database is needed. Everything under tests/unit is pure — the catalog, pricing, access and
+# CSV modules are all framework-free by design, so the suite runs against no Postgres, no Neon
+# and no secrets. That is a property worth protecting: the day this workflow needs a connection
+# string, something has leaked out of `src/lib` that should not have.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run irrelevant. Cancelling it keeps the
+# feedback fast and the queue short.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the `engines.node` floor in package.json.
+          node-version: '22'
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly what the lockfile pins and fails
+      # if the two have drifted, so a dependency cannot change underneath a green run.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck, lint and test
+        run: npm run check
