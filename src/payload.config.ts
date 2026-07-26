@@ -22,6 +22,10 @@ export default buildConfig({
     meta: {
       titleSuffix: ' · Threadline',
     },
+    components: {
+      // Counters an operator can act on, in place of a dashboard that only says hello.
+      beforeDashboard: ['@/components/admin/DashboardCounters#DashboardCounters'],
+    },
   },
   collections,
   globals: [Settings],

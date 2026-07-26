@@ -1,0 +1,109 @@
+/**
+ * Admin panel overrides.
+ *
+ * Payload's own styles are left alone — this file only styles components this project adds.
+ * Values come from Payload's CSS variables rather than the storefront tokens, so the admin
+ * keeps following Payload's own light and dark themes instead of drifting from them.
+ */
+
+.threadline-counters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--base, 1rem);
+  margin-bottom: calc(var(--base, 1rem) * 2);
+}
+
+.threadline-counter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: calc(var(--base, 1rem) * 0.9);
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: var(--style-radius-m, 4px);
+  background: var(--theme-elevation-50);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.threadline-counter:hover,
+.threadline-counter:focus-visible {
+  border-color: var(--theme-elevation-400);
+  background: var(--theme-elevation-100);
+}
+
+.threadline-counter__value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.threadline-counter__label {
+  font-weight: 500;
+}
+
+.threadline-counter__hint {
+  font-size: 0.8125rem;
+  color: var(--theme-elevation-500);
+}
+
+/* --- Variant generator and stock adjust ----------------------------------- */
+
+.threadline-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: calc(var(--base, 1rem) * 0.9);
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: var(--style-radius-m, 4px);
+  background: var(--theme-elevation-50);
+}
+
+.threadline-action__title {
+  font-weight: 600;
+}
+
+.threadline-action__hint {
+  font-size: 0.8125rem;
+  color: var(--theme-elevation-500);
+  margin: 0;
+}
+
+.threadline-action__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.threadline-action__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.threadline-action__field input,
+.threadline-action__field select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: var(--style-radius-s, 3px);
+  background: var(--theme-input-bg, var(--theme-elevation-0));
+  color: inherit;
+}
+
+.threadline-action__status {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.threadline-action__status--error {
+  color: var(--theme-error-500);
+}
+
+.threadline-action__status--ok {
+  color: var(--theme-success-500);
+}
