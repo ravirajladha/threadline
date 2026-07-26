@@ -1,6 +1,8 @@
 import type { CollectionBeforeValidateHook, CollectionConfig, PayloadRequest } from 'payload'
 
 import { publicReadStaffWrite } from '@/access'
+import { adjustStockEndpoint } from '@/endpoints/adjustStock'
+import { exportCatalogCsvEndpoint, importCatalogCsvEndpoint } from '@/endpoints/catalogCsvEndpoints'
 import { buildSku } from '@/lib/inventory/sku'
 import { isActiveField, moneyField, serverOwned } from './fields'
 
@@ -72,10 +74,21 @@ export const Variants: CollectionConfig = {
     description: 'This is what sells. Adjust stock through Stock Movements, never here.',
   },
   indexes: [{ fields: ['product', 'size', 'colour'], unique: true }],
+  // Order matters: the literal paths must be registered before `/:id/…` so that
+  // `/variants/export-csv` is not matched as a variant whose id is "export-csv".
+  endpoints: [exportCatalogCsvEndpoint, importCatalogCsvEndpoint, adjustStockEndpoint],
   hooks: {
     beforeValidate: [generateSku],
   },
   fields: [
+    {
+      name: 'stockAdjuster',
+      type: 'ui',
+      admin: {
+        components: { Field: '@/components/admin/StockAdjuster#StockAdjuster' },
+        condition: (data) => Boolean(data?.id),
+      },
+    },
     {
       name: 'product',
       type: 'relationship',

@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { publicReadStaffWrite } from '@/access'
+import { generateVariantsEndpoint } from '@/endpoints/generateVariants'
 import { moneyField, seoGroup, slugField } from './fields'
 import { PRODUCT_STATUSES } from '@/types'
 
@@ -23,7 +24,16 @@ export const Products: CollectionConfig = {
     group: 'Catalog',
     description: 'The style. Sizes and colours live in Variants.',
   },
+  endpoints: [generateVariantsEndpoint],
   fields: [
+    {
+      name: 'variantGenerator',
+      type: 'ui',
+      admin: {
+        components: { Field: '@/components/admin/VariantGenerator#VariantGenerator' },
+        condition: (data) => Boolean(data?.id),
+      },
+    },
     { name: 'title', type: 'text', required: true },
     slugField(),
     {
