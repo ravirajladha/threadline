@@ -241,12 +241,30 @@ Domain concepts are **classes with behaviour**, not bare data passed through loo
 - Order status machine: every illegal transition throws
 - Roles: `support_agent` cannot mutate orders; `catalog_manager` cannot issue refunds
 
-Commands the user runs:
+Commands Claude runs itself (fast, safe, no side effects beyond the repo):
 ```
-npm test              # unit + integration
-npm run test:e2e      # Playwright
 npm run check         # typecheck + lint + test — must pass before any stage is [x]
+npm test              # unit + integration
 ```
+
+### Commands the owner runs — do not spend session time on these
+
+These are slow, interactive, or need a human looking at the result. **Claude must hand these over
+rather than run them**, and say exactly what it expects to see.
+
+```
+npm run dev           # dev server — long-running, blocks a session
+npm run test:e2e      # Playwright; boots its own dev server. Minutes, not seconds
+npm run seed          # ~3 min against Neon. Re-run after a schema change
+npm run build         # production build check
+npm audit             # OWASP A06 dependency check
+```
+
+Anything **destructive or billable** is always the owner's to run, never Claude's:
+database drops or resets, `payload migrate:fresh`, deploys, provisioning, and anything that
+spends money on a provider.
+
+When Claude finishes a stage it lists which of these to run and what a pass looks like.
 
 ---
 
@@ -270,10 +288,24 @@ npm run check         # typecheck + lint + test — must pass before any stage i
 
 **Done:** `npm run check` and `npm run test:e2e` both pass; `/admin` works against Neon.
 
-### [ ] J1 — Data model
-Collections per `docs/SCHEMA.md`. Migration generated and run. Types exported.
-Role-based access functions in `src/access/` with tests. Seed script with a fictional demo catalog
-(3 categories, 6 products, full size × colour matrix).
+### [x] J1 — Data model
+**Goal:** every collection in `docs/SCHEMA.md` exists, is access-controlled by role, has generated
+types and a migration, and a fictional demo catalog seeds cleanly.
+
+- [x] 22 collections (one file each) + `settings` global, listed once in `src/collections/index.ts`
+- [x] Shared field builders in `src/collections/fields.ts` — slug, money-in-paise, SEO, address snapshot
+- [x] `src/access/` — role matrix as data, actor resolution, Payload access functions.
+      Customer scoping returns a `Where`, so another customer's row is never fetched
+- [x] `src/lib/` — `utils/slug`, `inventory/sku`, `inventory/stock`, `inventory/syncStock` (+ Payload port)
+- [x] Unique constraint on `(product, size, colour)`; indexes per `docs/SCHEMA.md`
+- [x] `src/payload-types.ts` regenerated; migration `20260726_181320_j1_data_model` generated
+- [x] `npm run seed` — 3 categories, 6 products, 76 variants, one staff account per role, demo
+      customer. Idempotent, refuses production, reconciles stock against the ledger on the way out
+- [x] OWASP pass: A01 every collection declares access, A04 stock/totals server-owned,
+      A09 append-only ledgers for stock, order events and loyalty
+- [x] `npm run check` green — 214 unit tests; `docs/ARCHITECTURE.md` §5 and §6 written
+
+**Done:** `npm run check` passes; seed produces a browsable catalog with sold-out variants for J3.
 
 ### [ ] J2 — Admin usability
 Bulk variant generator (pick sizes + colours → auto SKUs), stock adjustment writing to the movement
@@ -337,4 +369,13 @@ monitoring, backups, go-live checklist.
   Structure from §3 built out. `Money` value object with 24 unit tests; 5 Playwright e2e specs green.
   Design tokens with light/dark and a single-point rebrand (mulberry `#b04b76`).
   OWASP Top 10 baseline and OOP design rules added to §2/§3 (replacing the earlier "WASP" note).
-  **Next: J1 — data model.**
+- 2026-07-27 [J1]: Data model complete. 22 collections + `settings` global, all wired through
+  `src/collections/index.ts`. Access control in `src/access/` — role matrix as data, customer
+  scoping via `Where` constraints, `users.role` locked to super_admin. 214 unit tests
+  (up from 24): slug, SKU, stock ledger, stock sync, the full role × resource matrix, and access
+  per role. Migration `20260726_181320_j1_data_model` generated; dev schema pushed to Neon.
+  `npm run seed` builds 6 products / 76 variants, idempotent and self-reconciling.
+  Caught and fixed: nested Local API queries in a collection hook must carry `req` or they miss
+  the open transaction and write `stockQty: 0` over good data — hence `payloadLedger.ts`.
+  §5 gained an owner-run command list so slow work stops costing session time.
+  **Next: J2 — admin usability.**

@@ -50,18 +50,27 @@ they don't decide.
 
 ```bash
 npm install
-cp .env.example .env.local     # fill in the values
-npm run payload migrate
+cp .env.example .env.local     # fill in the values, including SEED_PASSWORD
+npm run seed                   # demo catalog + one staff account per role
 npm run dev
 ```
 
 Storefront at `http://localhost:3000`, admin at `http://localhost:3000/admin`.
+
+The seed creates staff accounts at `<role>@threadline.example` — `super_admin@threadline.example`
+and so on — all using `SEED_PASSWORD`, plus a demo customer at `demo@threadline.example`.
+It is idempotent, so re-running it after a schema change is safe, and it refuses to run with
+`NODE_ENV=production`.
+
+Schema is pushed automatically in development. Production runs the generated migrations in
+`src/migrations/` with `npm run payload migrate`.
 
 ## Scripts
 
 ```bash
 npm run dev         # dev server
 npm run build       # production build
+npm run seed        # idempotent demo catalog
 npm test            # unit + integration tests
 npm run test:e2e    # Playwright
 npm run check       # typecheck + lint + test
@@ -71,8 +80,8 @@ npm run check       # typecheck + lint + test
 
 Development runs as a staged journey — see [`CLAUDE.md`](./CLAUDE.md).
 
-- [ ] J0 Foundation
-- [ ] J1 Data model
+- [x] J0 Foundation
+- [x] J1 Data model
 - [ ] J2 Admin usability
 - [ ] J3 Storefront: browse
 - [ ] J4 Cart & checkout

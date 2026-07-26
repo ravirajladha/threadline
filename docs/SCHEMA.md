@@ -81,14 +81,28 @@ Never update or delete a row. `variants.stockQty` is recalculated from this.
 | `isActive` | checkbox | |
 
 **Role matrix** — enforced in each collection's `access` functions, not in the UI.
+Implemented as data in `src/access/permissions.ts` and asserted against this table in
+`tests/unit/permissions.spec.ts`. **The three must be changed together** — the test fails otherwise.
 
-| Role | Catalog | Orders | Refunds | Support | Coupons | Users/Settings |
-|---|---|---|---|---|---|---|
-| `super_admin` | full | full | full | full | full | full |
-| `catalog_manager` | full | read | — | — | — | — |
-| `order_manager` | read | full | full | read | — | — |
-| `support_agent` | read | read | — | full | — | — |
-| `marketing` | read | read | — | — | full | — |
+| Role | Catalog | Orders | Refunds | Support | Coupons | Customers | Users/Settings |
+|---|---|---|---|---|---|---|---|
+| `super_admin` | full | full | full | full | full | full | full |
+| `catalog_manager` | full | read | — | — | — | — | — |
+| `order_manager` | read | full | full | read | — | read | — |
+| `support_agent` | read | read | — | full | — | read | — |
+| `marketing` | read | read | — | — | full | — | — |
+
+**Customers** is customer PII — accounts, addresses, wishlists. `marketing` is deliberately
+excluded: a campaign tool does not need to read individual customer records, and least privilege
+means it does not get to.
+
+Each collection maps onto exactly one resource in that table. Beyond the staff matrix, a signed-in
+**customer** may read and write only their own rows — enforced by returning a `Where` constraint
+(`{ customer: { equals: me } }`) that Payload folds into the SQL, so another customer's row is
+never fetched rather than fetched and filtered.
+
+Three collections are **append-only** — `stockMovements`, `orderEvents`, `loyaltyTransactions`.
+`update` and `delete` are denied to every role including `super_admin`; corrections are new rows.
 
 ### `customers` — storefront accounts (separate auth collection from staff)
 `email`, `password`, `name`, `phone`, `whatsappOptIn`, `loyaltyPoints`, `emailVerified`, `lastSeenAt`.

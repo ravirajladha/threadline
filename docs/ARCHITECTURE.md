@@ -59,11 +59,72 @@ a database write cannot round-trip through a float. 24 unit tests in `tests/unit
 
 ## 5. Data model
 
-See `docs/SCHEMA.md`. Implemented in J1. _pending_
+22 collections and one global, defined in `src/collections/` (one file each) and listed once in
+`src/collections/index.ts` — a file missing from that barrel does not exist as far as the database
+is concerned. Field shapes that repeat (slug, money, SEO group, address snapshot) are built by
+`src/collections/fields.ts` so that "money is integer paise" is a property of the system rather
+than a habit. Full field reference: `docs/SCHEMA.md`.
+
+Four modelling decisions carry the weight:
+
+**Product vs variant.** A `product` is a *style* and does not sell; a `variant` is one size in one
+colour, with its own SKU, price and stock, and is what a cart holds. A unique constraint on
+`(product, size, colour)` guarantees exactly one row per cell of the matrix. SKUs are generated
+`PRODUCT-COLOUR-SIZE` by a `beforeValidate` hook on create only — a SKU already printed on a
+picking slip must not change under the warehouse.
+
+**Snapshots, not joins.** `orderItems` copies the title, size label, colour name, unit price and
+tax rate; `orders` copies the shipping and billing addresses. A product renamed or repriced next
+month must not rewrite an invoice raised today.
+
+**Append-only ledgers.** `stockMovements`, `orderEvents` and `loyaltyTransactions` deny `update`
+and `delete` to every role including `super_admin`. A correction is a new row with a reason. This
+is what makes a stock discrepancy explainable and a double-processed webhook detectable.
+
+`variants.stockQty` is therefore never authored — it is the sum of the ledger, recomputed by
+`syncVariantStock` (`src/lib/inventory/syncStock.ts`) after every movement. That function takes a
+`StockLedgerPort` interface rather than Payload, so the hook, the seed and the tests all drive the
+same maths through different storage. **The Payload implementation threads `req` into every nested
+query** (`src/lib/inventory/payloadLedger.ts`): a hook runs inside the transaction creating the
+movement, and a query that does not join that transaction cannot see the uncommitted row — it
+sums an apparently empty ledger and writes `stockQty: 0` over good data.
+
+**Config, not constants.** The `settings` global holds every number the owner might change —
+free-shipping threshold, return window, GST state, loyalty rules. Publicly readable, because the
+storefront needs them to render honest copy; nothing secret goes in it.
+
+### Migrations and seeding
+
+The Postgres adapter pushes schema automatically in development; production runs the generated
+migration in `src/migrations/`. `npm run seed` builds a fictional demo catalog — 3 sellable
+categories, 6 products, 76 variants across the full size × colour matrix, one staff account per
+role and a demo customer. It is idempotent (matched on unique fields), refuses to run with
+`NODE_ENV=production`, takes account passwords from `SEED_PASSWORD`, and reconciles every
+variant against its ledger on the way out so a re-seed repairs drift rather than leaving it.
 
 ## 6. Access control and roles
 
-Five staff roles plus customers. Matrix in `docs/SCHEMA.md`; implementation in `src/access/`. _pending_
+Two auth collections: `users` (staff, carries a `role`) and `customers` (storefront, carries no
+role at all). `admin.user` points at `users` only, so a storefront session cannot reach `/admin`
+regardless of what its token claims. `users.role` is field-access locked to `super_admin` on
+update — without that, any staff member editing their own row to change a password could promote
+themselves.
+
+The policy is data, not code: `src/access/permissions.ts` holds the role × resource matrix as a
+single table, and every collection maps onto exactly one resource. `tests/unit/permissions.spec.ts`
+asserts that table against the matrix transcribed from `docs/SCHEMA.md`, so widening a role in one
+place and not the other fails the build.
+
+`src/access/actor.ts` resolves who is calling — staff role, customer id, or neither — and treats
+`isActive: false` as a hard deny, so a deactivated account keeps its row and loses every
+permission. `src/access/index.ts` composes the two into Payload access functions.
+
+The rule that matters most: **customer scoping returns a `Where`, not a post-filter.**
+`ownScopedRead({ resource: 'orders', ownerField: 'customer' })` resolves to
+`{ customer: { equals: <me> } }`, which Payload folds into the SQL. Another customer's row is
+never fetched, so there is no forgotten filter downstream that could leak it. Scoping works across
+a relationship too — order lines use `order.customer`. Staff read is asymmetric with staff write
+on purpose: a `support_agent` may read every order and change none.
 
 ## 7. Payments — Razorpay
 
@@ -108,5 +169,8 @@ admin internals (`.dashboard`) are version-sensitive — expect to revisit them 
 
 ## Changelog
 
+- **2026-07-27 (J1)** — Data model. 22 collections and the `settings` global; `src/access/` with the
+  role matrix as testable data; stock as an append-only ledger with a recomputed cache; migration
+  `20260726_181320_j1_data_model`; idempotent demo seed. 214 unit tests.
 - **2026-07-26 (J0)** — Foundation. Next 16 + Payload 3.86 + Neon Postgres, route groups, folder
   structure, design tokens, `Money`, Vitest and Playwright harnesses, OWASP baseline documented.
