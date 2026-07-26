@@ -1,0 +1,121 @@
+/*
+ * Design tokens — the single place the brand lives.
+ *
+ * TO REBRAND: change the four --brand-* values below. Nothing else in the codebase
+ * hardcodes a colour, so the whole storefront follows.
+ */
+
+:root {
+  /* --- Brand ------------------------------------------------------------- */
+  /* Mulberry orchid — a pink that leans plum rather than candy. */
+  --brand-accent: #b04b76;
+  --brand-accent-hover: #973f65;
+  --brand-accent-fg: #ffffff;
+  --brand-accent-subtle: #f7e9f0;
+
+  /* --- Surfaces ---------------------------------------------------------- */
+  --bg: #fdfcfc;
+  --surface: #ffffff;
+  --surface-raised: #f7f5f5;
+  --border: #e6e1e2;
+  --border-strong: #cfc7c9;
+
+  /* --- Text -------------------------------------------------------------- */
+  --fg: #1a1618;
+  --fg-muted: #6b6266;
+  --fg-subtle: #948a8e;
+
+  /* --- Semantic ---------------------------------------------------------- */
+  --accent: var(--brand-accent);
+  --accent-hover: var(--brand-accent-hover);
+  --accent-fg: var(--brand-accent-fg);
+  --accent-subtle: var(--brand-accent-subtle);
+
+  --success: #2e7d55;
+  --warning: #b4761f;
+  --danger: #c0392f;
+  --info: #2f6fb4;
+
+  /* --- Shape ------------------------------------------------------------- */
+  --radius-control: 0.375rem;
+  --radius-card: 0.75rem;
+
+  /* --- Motion ------------------------------------------------------------ */
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dark theme — follows the OS by default. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand-accent: #e58ab0;
+    --brand-accent-hover: #f0a3c2;
+    --brand-accent-fg: #2a0f1c;
+    --brand-accent-subtle: #2e1a23;
+
+    --bg: #121011;
+    --surface: #1a1718;
+    --surface-raised: #232021;
+    --border: #322d2f;
+    --border-strong: #494243;
+
+    --fg: #f5f2f3;
+    --fg-muted: #a89ea2;
+    --fg-subtle: #7d7378;
+
+    --success: #4caf7d;
+    --warning: #d9a441;
+    --danger: #e05c52;
+    --info: #5b9bd8;
+  }
+}
+
+/* Explicit theme choice always wins over the OS preference. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --brand-accent: #b04b76;
+  --brand-accent-hover: #973f65;
+  --brand-accent-fg: #ffffff;
+  --brand-accent-subtle: #f7e9f0;
+
+  --bg: #fdfcfc;
+  --surface: #ffffff;
+  --surface-raised: #f7f5f5;
+  --border: #e6e1e2;
+  --border-strong: #cfc7c9;
+
+  --fg: #1a1618;
+  --fg-muted: #6b6266;
+  --fg-subtle: #948a8e;
+
+  --success: #2e7d55;
+  --warning: #b4761f;
+  --danger: #c0392f;
+  --info: #2f6fb4;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --brand-accent: #e58ab0;
+  --brand-accent-hover: #f0a3c2;
+  --brand-accent-fg: #2a0f1c;
+  --brand-accent-subtle: #2e1a23;
+
+  --bg: #121011;
+  --surface: #1a1718;
+  --surface-raised: #232021;
+  --border: #322d2f;
+  --border-strong: #494243;
+
+  --fg: #f5f2f3;
+  --fg-muted: #a89ea2;
+  --fg-subtle: #7d7378;
+
+  --success: #4caf7d;
+  --warning: #d9a441;
+  --danger: #e05c52;
+  --info: #5b9bd8;
+}

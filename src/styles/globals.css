@@ -1,0 +1,59 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/*
+ * Map design tokens onto Tailwind's theme so utilities like `bg-surface`,
+ * `text-fg-muted` and `border-border` resolve to the tokens in tokens.css.
+ * Components must use these utilities — never a raw hex value.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+}
+
+html {
+  background-color: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+/* Visible focus for keyboard users — accessibility requirement, do not remove. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
