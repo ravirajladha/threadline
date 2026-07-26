@@ -509,8 +509,11 @@ Every one keeps its stub, which is what the test suite and local development con
   Owner's decision this session, now §2 "Build order — stub the outside world first": the entire
   customer journey gets built against stub adapters before any provider is connected. J4–J7
   retitled accordingly; real integrations become J11, one provider per commit.
+  The seed generates its own sample product photography now — 4:5 WebPs composed with `sharp`
+  from the colour's own hex, matched by filename so a re-run reuses them. Fictional by
+  construction, which is the only kind of image a public repo can commit against.
   **Not done, and the exact next action:** the storefront components
-  (`src/components/{ui,layout,catalog,product}/`) and the sample-image seed were still being
+  (`src/components/{ui,layout,catalog,product}/`) were still being
   written when the session ended, so `src/components/catalog/ListingView.tsx` and the four routes
   under `src/app/(storefront)/` are committed but **do not typecheck yet** — they import
   components that do not exist. Next session: land those components, then run `npm run check`
