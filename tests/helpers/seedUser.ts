@@ -1,9 +1,15 @@
 import { getPayload } from 'payload'
 import config from '../../src/payload.config.js'
 
+/**
+ * `users` requires a name and a role from J1 onward — a bare email/password create no longer
+ * passes validation. The e2e suite needs the admin panel in full, so this user is a super_admin.
+ */
 export const testUser = {
   email: 'dev@payloadcms.com',
   password: 'test',
+  name: 'E2E Test Admin',
+  role: 'super_admin' as const,
 }
 
 /**
