@@ -24,7 +24,15 @@ const eslintConfig = [
     },
   },
   {
-    ignores: ['.next/', 'src/payload-types.ts', 'src/payload-generated-schema.ts'],
+    // Payload owns these files and rewrites them on demand — linting them only produces
+    // warnings nobody may act on, since hand-editing them is forbidden.
+    ignores: [
+      '.next/',
+      'src/payload-types.ts',
+      'src/payload-generated-schema.ts',
+      'src/migrations/**',
+      'src/app/(payload)/admin/importMap.js',
+    ],
   },
 ]
 

@@ -126,31 +126,90 @@ never fetched, so there is no forgotten filter downstream that could leak it. Sc
 a relationship too — order lines use `order.customer`. Staff read is asymmetric with staff write
 on purpose: a `support_agent` may read every order and change none.
 
-## 7. Payments — Razorpay
+## 7. Admin tooling
+
+Built at J2, aimed at one thing: an owner who is not a developer should be able to run the
+catalog without asking anyone.
+
+**Bulk variant generator.** Adding a shirt in 5 sizes and 3 colours is one action, not fifteen
+rows typed by hand — which is where a real catalog acquires its missing sizes and its two
+spellings of the same navy. `planVariantMatrix` (`src/lib/inventory/variantMatrix.ts`) decides
+which cells of the matrix are missing and what each SKU is; the endpoint resolves ids and writes.
+It is idempotent against what already exists, so the button is safe to press again after adding
+one more colour, and it previews before it commits.
+
+**Stock adjustment.** `stockQty` stays read-only everywhere, because it is derived. The owner
+instead says what happened — "the count says 12", "40 arrived", "2 were damaged" — and
+`src/lib/inventory/adjustment.ts` turns that into the signed movement that expresses it. A
+no-op returns "already at that figure" rather than writing a zero-quantity row. This is what
+lets the admin offer a plain "set stock to N" box without `stockQty` ever becoming writable.
+
+**CSV import and export** (`src/lib/csv/`). Serialising is hand-written rather than taken from a
+dependency because the requirement is small and the failure mode is expensive: a naive
+`split(',')` corrupts exactly the rows a clothing catalog is full of — a fit note containing a
+comma, a title containing a quote, care instructions containing a newline — and those are the
+rows nobody notices are broken until the import has run.
+
+Three decisions shape the import:
+
+- **Dry run by default.** Committing takes an explicit `dryRun: false`. An import that repriced
+  400 variants because a column was misread is not recoverable from the admin.
+- **Every error at once**, with the spreadsheet line number and column. Someone fixing a file
+  needs the whole list, not to fix one typo and rediscover the next.
+- **Identity columns are not importable.** Product, category, size and colour are context for
+  whoever reads the file; honouring them would silently rewrite the meaning of every order line
+  already pointing at the variant. Stock is not written either — a changed figure becomes an
+  `adjust` movement, so a CSV import lands in the ledger like every other stock change.
+
+Money crosses the CSV boundary in **rupees**, not paise: a spreadsheet is a render boundary, and
+an owner typing `1899.00` should not have to know the system counts in paise. `Money` does the
+conversion, so the float never survives past parsing.
+
+**Endpoints** live in `src/endpoints/`, mounted on their collections. Two properties are not
+optional there. First, **a custom endpoint bypasses collection access entirely** — Payload only
+applies those to its own CRUD routes — so every handler re-checks the role through
+`requireWrite` (OWASP A01). Second, every handler is wrapped in `safeHandler`, which turns an
+unanticipated throw into a plain 500: without it a database error returns the failing SQL, its
+parameters and a stack trace to the caller, which is a free map of the schema (OWASP A05).
+Expected failures are still the handler's own 400s, with messages written for a human.
+
+**Role-aware navigation.** `src/access/adminUI.ts` hides a collection from the sidebar unless the
+role can read it, bound centrally in `src/collections/index.ts` rather than repeated 22 times.
+Hiding is never the control — `src/access/` has already refused the request; this only stops the
+admin offering a door that is locked. A test asserts the two agree for every role and resource,
+because a nav that disagrees with the access rules produces either a link that 403s or a hidden
+page a role can actually use.
+
+**Dashboard counters** replace a dashboard that only says hello with the four numbers that mean
+somebody has to do something today: low stock, orders awaiting action, open tickets, reviews
+awaiting moderation. A Server Component, gated on the same matrix, so a `marketing` user sees the
+catalog and order counts and nothing about support.
+
+## 8. Payments — Razorpay
 
 _pending (J4)_
 
-## 8. Shipping — Shiprocket
+## 9. Shipping — Shiprocket
 
 _pending (J5)_
 
-## 9. Scheduler
+## 10. Scheduler
 
 _pending (J5)_
 
-## 10. Notifications — email and WhatsApp
+## 11. Notifications — email and WhatsApp
 
 _pending (J6)_
 
-## 11. Customer support and AI assistant
+## 12. Customer support and AI assistant
 
 _pending (J7)_
 
-## 12. SEO
+## 13. SEO
 
 _pending (J9)_
 
-## 13. Deployment
+## 14. Deployment
 
 _pending (J10)_
 
@@ -169,6 +228,9 @@ admin internals (`.dashboard`) are version-sensitive — expect to revisit them 
 
 ## Changelog
 
+- **2026-07-27 (J2)** — Admin usability. Bulk variant generator, stock adjustment through the
+  ledger, catalog CSV import/export with dry-run, role-aware nav, dashboard counters. Endpoints
+  gained a shared role guard and error boundary. 351 unit tests.
 - **2026-07-27 (J1)** — Data model. 22 collections and the `settings` global; `src/access/` with the
   role matrix as testable data; stock as an append-only ledger with a recomputed cache; migration
   `20260726_181320_j1_data_model`; idempotent demo seed. 214 unit tests.

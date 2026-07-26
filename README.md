@@ -82,7 +82,7 @@ Development runs as a staged journey — see [`CLAUDE.md`](./CLAUDE.md).
 
 - [x] J0 Foundation
 - [x] J1 Data model
-- [ ] J2 Admin usability
+- [x] J2 Admin usability
 - [ ] J3 Storefront: browse
 - [ ] J4 Cart & checkout
 - [ ] J5 Orders, fulfilment & scheduler

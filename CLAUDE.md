@@ -307,9 +307,28 @@ types and a migration, and a fictional demo catalog seeds cleanly.
 
 **Done:** `npm run check` passes; seed produces a browsable catalog with sold-out variants for J3.
 
-### [ ] J2 — Admin usability
-Bulk variant generator (pick sizes + colours → auto SKUs), stock adjustment writing to the movement
-ledger, the five staff roles wired end to end, dashboard counters, CSV import/export.
+### [x] J2 — Admin usability
+**Goal:** the admin is usable by a non-technical owner. Adding a product with 15 variants is one
+action, not fifteen; stock is corrected without touching the ledger by hand; each role sees only
+what it can act on.
+
+- [x] `src/lib/inventory/variantMatrix.ts` — idempotent size × colour expansion with generated SKUs
+- [x] `src/lib/inventory/adjustment.ts` — "count says N" / "N arrived" / "N damaged" → the signed
+      ledger movement that expresses it; a no-op returns null rather than writing an empty row
+- [x] `src/lib/csv/` — RFC 4180 serialise + parse, then a catalog mapper that reports every bad
+      row at once with its spreadsheet line and column. Money crosses in rupees, via `Money`
+- [x] `src/access/adminUI.ts` — nav filtered by the role matrix, bound centrally in
+      `src/collections/index.ts`; a test asserts nav and access agree for every role × resource
+- [x] Endpoints in `src/endpoints/` — generate variants · adjust stock · export CSV · import CSV.
+      Every one re-checks the role (a custom endpoint bypasses collection access) and is wrapped
+      in `safeHandler`, so a database error cannot return SQL and a stack trace to the caller
+- [x] Admin UI: variant generator, stock adjuster, dashboard counters; import map regenerated
+- [x] OWASP pass: A01 role re-checked per endpoint, A04 stock only ever appends to the ledger and
+      identity columns are not importable, A05 error boundary on every handler
+- [x] `npm run check` green — 351 unit tests; `docs/ARCHITECTURE.md` §7 written
+
+**Done:** verified against the dev database — all three adjustment modes, a lossless 76-row CSV
+round trip, and `support_agent` refused on every endpoint.
 
 ### [ ] J3 — Storefront: browse
 Home, category listing with URL-state filters (size, colour, price, availability), product detail with
@@ -378,4 +397,13 @@ monitoring, backups, go-live checklist.
   Caught and fixed: nested Local API queries in a collection hook must carry `req` or they miss
   the open transaction and write `stockQty: 0` over good data — hence `payloadLedger.ts`.
   §5 gained an owner-run command list so slow work stops costing session time.
-  **Next: J2 — admin usability.**
+- 2026-07-27 [J2]: Admin usability. Bulk variant generator, stock adjustment through the ledger,
+  catalog CSV import/export, role-aware nav, dashboard counters. 351 unit tests (up from 214) —
+  the CSV parser is hand-written and carries the weight of that, since a naive split corrupts
+  exactly the rows a clothing catalog is full of.
+  Endpoints verified against the dev database, not just typechecked: all three adjustment modes,
+  a lossless 76-row CSV round trip, every validation path, and `support_agent` refused on each.
+  That run also found two real gaps, both fixed: handlers had no error boundary, so a database
+  error returned the failing SQL to the caller, and `actor` was taking `req.user.id` without
+  checking it was a staff id. `safeHandler` and `staffIdOf` now cover both.
+  **Next: J3 — storefront browse.**
