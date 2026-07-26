@@ -15,6 +15,26 @@ export const STAFF_ROLES = [
 ] as const
 export type StaffRole = (typeof STAFF_ROLES)[number]
 
+/**
+ * The things a staff role can hold permission over. Collections map onto one of these
+ * rather than each declaring its own bespoke rule — see `src/access/permissions.ts`.
+ */
+export const RESOURCES = [
+  'catalog',
+  'orders',
+  'refunds',
+  'support',
+  'coupons',
+  'customers',
+  'users',
+  'settings',
+] as const
+export type Resource = (typeof RESOURCES)[number]
+
+/** What a role may do with a resource. `full` implies `read`. */
+export const PERMISSION_LEVELS = ['none', 'read', 'full'] as const
+export type PermissionLevel = (typeof PERMISSION_LEVELS)[number]
+
 /** Which size set a category uses. Must match the `sizes.group` values. */
 export const SIZE_GROUPS = ['topwear', 'bottomwear', 'kids', 'footwear', 'free'] as const
 export type SizeGroup = (typeof SIZE_GROUPS)[number]
@@ -77,8 +97,37 @@ export type ReturnStatus = (typeof RETURN_STATUSES)[number]
 export const TICKET_STATUSES = ['open', 'pending_customer', 'resolved', 'closed'] as const
 export type TicketStatus = (typeof TICKET_STATUSES)[number]
 
+export const TICKET_CATEGORIES = ['order', 'return', 'product', 'payment', 'other'] as const
+export type TicketCategory = (typeof TICKET_CATEGORIES)[number]
+
+export const TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const
+export type TicketPriority = (typeof TICKET_PRIORITIES)[number]
+
+/** Who wrote a ticket message. `bot` is the Claude assistant before handoff. */
+export const MESSAGE_AUTHOR_TYPES = ['customer', 'agent', 'bot'] as const
+export type MessageAuthorType = (typeof MESSAGE_AUTHOR_TYPES)[number]
+
+/** Roles in a stored assistant transcript, mirroring the Claude API. */
+export const CHAT_ROLES = ['user', 'assistant'] as const
+export type ChatRole = (typeof CHAT_ROLES)[number]
+
 export const LOYALTY_TRANSACTION_TYPES = ['earn', 'redeem', 'expire', 'reverse'] as const
 export type LoyaltyTransactionType = (typeof LOYALTY_TRANSACTION_TYPES)[number]
+
+/** Publication state of a catalog style. Only `active` is sellable. */
+export const PRODUCT_STATUSES = ['draft', 'active', 'archived'] as const
+export type ProductStatus = (typeof PRODUCT_STATUSES)[number]
+
+export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number]
+
+/** Fit feedback drives the "runs small, size up" hint on the product page. */
+export const FIT_FEEDBACK = ['runs_small', 'true_to_size', 'runs_large'] as const
+export type FitFeedback = (typeof FIT_FEEDBACK)[number]
+
+/** What a coupon applies to. Narrows the cart lines a discount may touch. */
+export const COUPON_SCOPES = ['all', 'categories', 'products'] as const
+export type CouponScope = (typeof COUPON_SCOPES)[number]
 
 /** GST applies as CGST+SGST within the seller's state, IGST across states. */
 export type TaxJurisdiction = 'intra_state' | 'inter_state'
