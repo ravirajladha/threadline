@@ -1,0 +1,291 @@
+# Threadline — CLAUDE.md (Master Journey File)
+
+> Loaded automatically on every session start.
+> Work the **Journey** below top to bottom. One stage at a time. Mark `[x]` only when the
+> stage's tests pass. Update the Session Log at the end of every session.
+> Created: 2026-07-26 · Last updated: 2026-07-26
+
+---
+
+## 0. HOW THIS FILE WORKS (read first, every session)
+
+This file is a **loop**, not a document. Each session:
+
+1. Read this file, then read `docs/FEATURES.md` for anything new in its Inbox.
+2. Find the first stage that is not `[x]`.
+3. If that stage has no task list yet → **expand it first** (write its tasks in), then start.
+4. Do the tasks. Write the tests. Run them. Fix until green.
+5. Mark `[x]`, commit, push, append one line to the Session Log.
+6. When tokens run low → stop cleanly, log exactly where you stopped.
+
+**Progressive expansion.** Only the *active* stage carries detailed tasks. Later stages are
+headlines only. Expand a stage when you reach it; collapse it to one line once complete.
+This keeps the file small and every session cheap.
+
+**Re-looping.** New features arrive through `docs/FEATURES.md`. Spec them there, then append a new
+stage (`J11`, `J12`, …) at the bottom of the journey. The journey is never rewritten, only extended.
+
+**Loop command (user runs this):**
+
+```
+/loop Read C:\xampp\htdocs\cloth_website\CLAUDE.md and docs/FEATURES.md, find the first unchecked
+stage, expand it if it has no tasks, complete it with tests, mark [x], commit and push, update the
+Session Log, continue. Do not ask for confirmation except for destructive DB operations or spend.
+```
+
+---
+
+## 1. PROJECT IDENTITY
+
+| Property | Value |
+|---|---|
+| Project | **Threadline** — clothing e-commerce store *(working name, rename when the brand is set)* |
+| Root | `C:\xampp\htdocs\cloth_website` |
+| Repo | public, GitHub `ravirajladha` |
+| Framework | Next.js 16 (App Router) + React 19 + TypeScript (strict) |
+| Backend + Admin | Payload CMS 3 — embedded in the same Next.js app |
+| Database | PostgreSQL (local · prod: AWS RDS) |
+| Styling | Tailwind 4 + shadcn/ui |
+| Media | S3-compatible storage via Payload S3 adapter (never local disk) |
+| Payments | Razorpay (Node SDK) |
+| Shipping | Shiprocket REST |
+| Email | Resend + React Email |
+| WhatsApp | Meta WhatsApp Cloud API |
+| AI assistant | Anthropic Claude API (`ANTHROPIC_API_KEY`) — support chatbot |
+| Tests | Vitest (unit/integration) + Playwright (e2e) |
+| Hosting | AWS — EC2 + RDS + S3/CloudFront, or Amplify Hosting |
+
+### Engineering standards this project holds itself to
+| Standard | Meaning |
+|---|---|
+| Logic outside the framework | Business rules live in `src/lib/*`, framework-agnostic and unit-tested — never buried in admin config or components |
+| Tested by default | Every `lib/` module ships with unit tests; critical flows have e2e. Untested code is unfinished code |
+| Variants are the core | Size × colour is modelled from day one, not retrofitted |
+| Notifications are a system | One dispatcher, many channels — not scattered `send()` calls |
+| Support is a product surface | Ticketing and an AI assistant, not a mailto link |
+| Returns are first-class | Clothing runs 20–40% returns; exchange-for-size is a designed flow |
+| One scheduler | A single job registry, not ad-hoc cron entries |
+| SEO from the first page | Metadata and structured data built in, never retrofitted |
+
+---
+
+## 2. ABSOLUTE RULES
+
+### Attribution
+- **Never add Claude, Anthropic, or any AI tool as an author, co-author or contributor.** No
+  `Co-Authored-By` trailers, no "Generated with" footers, no AI mentions in commits, PRs, README,
+  code comments or docs. Every commit is authored solely by the repo owner.
+
+### Public repository
+- This repo is **public**. Never commit client names, other projects, private business data,
+  credentials, invoices, or internal notes about third parties.
+- `.env*` is gitignored. `.env.example` documents keys with empty values only.
+- Seed data must be fictional.
+
+### Database
+- Never `DROP`, `TRUNCATE`, or destructively alter a table without explicit written instruction in the current session.
+- Payload owns the schema. Change collections, then generate a migration — never hand-edit tables.
+- Migrations run against local Postgres first. Never against RDS from a dev session.
+- Before any migration: `npm run payload migrate:status`.
+
+### Code
+- **No business logic in components.** Components render. `src/lib/*` decides.
+- **One source of truth for money.** All price, tax, discount and total maths lives in `src/lib/pricing/`.
+- **Money is integer paise.** Never floats. Format only at the render boundary.
+- **Every external API sits behind an adapter** in `src/lib/` with a typed interface, so tests can mock it.
+- **No magic strings.** Order statuses, size groups, notification types, roles → union types in `src/types/`.
+- **Server Components by default.** `"use client"` only for real interactivity.
+- No `any` at module boundaries. `strict: true` stays on.
+
+### Process
+- No stage is `[x]` until `npm run check` passes.
+- Never mark a partially built task done — split it instead.
+- Prefer reversible changes. If it can't be undone easily, ask first.
+
+---
+
+## 3. STRUCTURE (the contract)
+
+```
+cloth_website/
+├─ src/
+│  ├─ app/
+│  │  ├─ (storefront)/          # public site — home, category, product, cart, checkout, account
+│  │  ├─ (payload)/             # admin routes (generated)
+│  │  └─ api/
+│  │     ├─ webhooks/           # razorpay · shiprocket · whatsapp
+│  │     ├─ chat/               # Claude assistant endpoint
+│  │     └─ cron/               # scheduled jobs (secret-protected)
+│  ├─ collections/              # Payload collections — ONE FILE PER COLLECTION
+│  ├─ access/                   # role-based access functions, shared across collections
+│  ├─ components/
+│  │  ├─ ui/                    # shadcn primitives — zero business logic, zero data fetching
+│  │  ├─ product/               # ProductCard · VariantPicker · SizeChart · Gallery
+│  │  ├─ cart/ · checkout/ · account/ · support/
+│  │  └─ layout/                # Header · Footer · Nav · Breadcrumbs
+│  ├─ lib/
+│  │  ├─ pricing/               # price · GST · coupon · loyalty — pure, heavily tested
+│  │  ├─ inventory/             # stock reservation, movement ledger
+│  │  ├─ orders/                # status machine, transitions
+│  │  ├─ payments/razorpay.ts
+│  │  ├─ shipping/shiprocket.ts
+│  │  ├─ notify/                # email.ts · whatsapp.ts · dispatcher.ts
+│  │  ├─ ai/                    # Claude client, prompt builders, catalog context
+│  │  ├─ scheduler/             # job registry + handlers
+│  │  ├─ seo/                   # metadata builders, JSON-LD
+│  │  └─ utils/
+│  ├─ hooks/                    # client hooks only
+│  ├─ types/                    # shared unions, enums, DTOs
+│  └─ styles/                   # tokens.css + globals
+├─ public/assets/
+│  ├─ brand/                    # logo · wordmark · favicon · og-default
+│  ├─ icons/
+│  └─ placeholders/
+├─ tests/
+│  ├─ unit/                     # mirrors src/lib
+│  └─ e2e/                      # Playwright specs
+├─ docs/
+│  ├─ SCHEMA.md                 # data model — source of truth for collections
+│  ├─ DESIGN.md                 # design system, tokens, UI rules
+│  ├─ FEATURES.md               # owner's feature inbox
+│  └─ ARCHITECTURE.md           # written progressively as stages complete
+└─ CLAUDE.md
+```
+
+### DRY rules with teeth
+- Used in two places → move to the nearest shared folder. Third use → `components/ui/`.
+- Two functions doing similar maths → one function with a parameter. No copy-paste.
+- Anything an admin might ever change (shipping cap, free-shipping threshold, return window)
+  is **config or DB, never a literal in code**.
+- Every collection exports a matching type. Access rules live in `src/access/`, defined once, reused everywhere.
+
+> **Methodology note:** "DRY + WASP" is interpreted here as **W**ell-separated layers ·
+> **A**tomic single-responsibility modules · **S**tateless pure logic in `lib/` · **P**redictable
+> naming and file placement. Correct this line if a different meaning was intended.
+
+---
+
+## 4. GIT & GITHUB
+
+- Public repo, pushed from day one so progress is visible.
+- Branch: `main`. Small, frequent commits — one logical change each.
+- Commit format: `type(scope): summary` — `feat(cart): merge guest cart on login`.
+  Types: `feat` `fix` `refactor` `test` `docs` `chore` `perf` `style`.
+- **Commit body and footer carry no AI attribution of any kind.** See §2.
+- Push at the end of every stage, and any time a session ends mid-stage.
+- Never force-push `main`. Never commit `.env*`, `node_modules`, `.next`, or media.
+
+---
+
+## 5. TESTING POLICY
+
+| Layer | Tool | Rule |
+|---|---|---|
+| `src/lib/**` | Vitest | **Mandatory.** Pure functions, table-driven cases, edge cases included |
+| Collection hooks | Vitest + test DB | Stock decrement, order totals, status transitions |
+| API routes / webhooks | Vitest | Signature verification, idempotency, malformed payloads |
+| Access control | Vitest | Each role against each collection — allowed and denied |
+| Critical flows | Playwright | Browse → variant select → cart → checkout → order |
+| Components | Skipped for now | Revisit if UI regressions appear |
+
+**Non-negotiable test cases:**
+- GST split: intra-state CGST+SGST vs inter-state IGST, computed on `price × quantity`
+- Coupon: min-cart, per-user limit, global limit, expiry, stacking
+- Stock: the last unit cannot be oversold under concurrent add-to-cart
+- Order total: subtotal + shipping + tax − discount − loyalty reconciles to the paise
+- Webhook idempotency: the same payment event twice must not double-process
+- Order status machine: every illegal transition throws
+- Roles: `support_agent` cannot mutate orders; `catalog_manager` cannot issue refunds
+
+Commands the user runs:
+```
+npm test              # unit + integration
+npm run test:e2e      # Playwright
+npm run check         # typecheck + lint + test — must pass before any stage is [x]
+```
+
+---
+
+## 6. THE JOURNEY
+
+> Detailed tasks exist only for the active stage. Expand the next stage when you reach it.
+
+### [ ] J0 — Foundation
+**Goal:** an empty but correct skeleton. Admin loads, tests run, structure enforced, repo live.
+
+- [ ] Scaffold Next.js 16 + TypeScript strict + Tailwind 4 in this folder
+- [ ] Install Payload 3, verify its supported Next version, pin accordingly
+- [ ] Postgres running locally; `.env.local` + `.env.example` with every key documented
+- [ ] Payload boots, admin reachable at `/admin`, first admin user created
+- [ ] Create the full folder tree from §3 with `.gitkeep` where empty
+- [ ] ESLint + Prettier + strict tsconfig; `npm run check` wired
+- [ ] Vitest configured with a passing sample test; Playwright installed with a smoke spec
+- [ ] `.gitignore` covering `.env*`, `node_modules`, `.next`, `media`; README with setup steps
+- [ ] Push to GitHub, confirm CI-less build succeeds locally
+- [ ] `docs/ARCHITECTURE.md` skeleton with section headings
+
+**Done when:** `npm run check` passes, `/admin` loads, structure matches §3, repo is pushed.
+
+### [ ] J1 — Data model
+Collections per `docs/SCHEMA.md`. Migration generated and run. Types exported.
+Role-based access functions in `src/access/` with tests. Seed script with a fictional demo catalog
+(3 categories, 6 products, full size × colour matrix).
+
+### [ ] J2 — Admin usability
+Bulk variant generator (pick sizes + colours → auto SKUs), stock adjustment writing to the movement
+ledger, the five staff roles wired end to end, dashboard counters, CSV import/export.
+
+### [ ] J3 — Storefront: browse
+Home, category listing with URL-state filters (size, colour, price, availability), product detail with
+colour-swapping gallery, size pills with sold-out visible-but-disabled, size chart modal, breadcrumbs.
+Metadata + Product/BreadcrumbList JSON-LD on every page.
+
+### [ ] J4 — Cart & checkout
+DB-backed cart keyed to a session cookie, guest → customer merge on login, address book,
+shipping rules, GST, coupons, Razorpay order creation, webhook with idempotency, confirmation page.
+
+### [ ] J5 — Orders & fulfilment + scheduler
+Order status machine, Shiprocket create/track/cancel, AWB storage, delivery webhook, and one
+scheduler registry (abandoned cart, status sync, stock alerts, review requests) on secret-protected cron routes.
+
+### [ ] J6 — Notifications: email + WhatsApp
+Single `notify.dispatch(event, payload)` API with Resend and Meta WhatsApp Cloud API adapters.
+Templates: placed, confirmed, shipped, out for delivery, delivered, cancelled, refund, abandoned cart,
+back-in-stock, review request. Every send logged; failures never block the order flow.
+
+### [ ] J7 — Customer support + Claude assistant
+Ticket collection, customer "My Requests" view, admin inbox with reply and assignment.
+Claude-powered assistant (`ANTHROPIC_API_KEY`) grounded in the live catalog and the signed-in
+customer's own orders, with strict data scoping, rate limiting, cost caps, and clean handoff to a human ticket.
+
+### [ ] J8 — Account, returns & loyalty
+Auth, order history with status timeline, wishlist with back-in-stock alerts, reviews with photos and
+fit feedback, returns and **size exchange**, loyalty points.
+
+### [ ] J9 — SEO & performance
+Sitemap, robots, canonicals, OG image generation, Core Web Vitals pass, image pipeline,
+caching and revalidation strategy, structured data validation, Lighthouse ≥ 95.
+
+### [ ] J10 — Launch
+AWS provisioning, S3 media, build in CI (never on the app instance), migrations, secrets,
+monitoring, backups, go-live checklist.
+
+---
+
+## 7. OPEN DECISIONS (owner input needed)
+
+- [ ] Final brand name and domain — `Threadline` is a placeholder; repo renames cleanly later
+- [ ] Logo and colour direction (one accent colour needed to set tokens)
+- [ ] Razorpay account and Shiprocket account — existing or new?
+- [ ] WhatsApp Business number and Meta Business verification status
+- [ ] Return window in days, and who pays return shipping
+- [ ] Launch scope — one category to start, or the full catalog?
+- [ ] Confirm the intended meaning of "WASP methodology" (see §3 note)
+
+---
+
+## 8. SESSION LOG
+
+- 2026-07-26: Project initialised. Stack decided (Next.js 16 + Payload 3 + Postgres + AWS).
+  `CLAUDE.md`, `docs/SCHEMA.md`, `docs/DESIGN.md`, `docs/FEATURES.md` written.
+  Journey J0–J10 defined, J0 expanded. Planning only — no application code yet.
