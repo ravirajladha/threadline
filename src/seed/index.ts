@@ -23,6 +23,8 @@ import { getPayload, type Payload } from 'payload'
 import config from '../payload.config'
 import { createPayloadLedgerPort } from '../lib/inventory/payloadLedger'
 import { syncVariantStock } from '../lib/inventory/syncStock'
+import { slugify } from '../lib/utils/slug'
+import { renderSampleImages } from './sampleImages'
 import { STAFF_ROLES, type StaffRole } from '../types'
 
 // --- Guards -----------------------------------------------------------------
@@ -211,9 +213,14 @@ async function seed(): Promise<void> {
 
   // Colours.
   const colourIds = new Map<string, number>()
+  // Keyed by slug rather than name because the gallery step below only has the slug that
+  // `renderSampleImages` stamped onto each image's filename — the same value the Colours
+  // collection's own `slugField` hook would produce from this same name.
+  const colourSlugToId = new Map<string, number>()
   for (const colour of COLOURS) {
     const id = await ensure(payload, 'colours', { name: { equals: colour.name } }, { ...colour, isActive: true })
     colourIds.set(colour.name, id)
+    colourSlugToId.set(slugify(colour.name), id)
   }
 
   // Sizes, in wearable order — sortOrder is what stops the pills rendering L, M, S, XL.
@@ -284,6 +291,8 @@ async function seed(): Promise<void> {
   // Products, and the full size × colour matrix beneath each.
   let variantCount = 0
   let stockIndex = 0
+  let mediaCreatedCount = 0
+  let mediaReusedCount = 0
 
   for (const spec of PRODUCTS) {
     const categoryId = categoryIds.get(spec.category)
@@ -369,6 +378,72 @@ async function seed(): Promise<void> {
         }
       }
     }
+
+    // Gallery — one rendered placeholder card per colour the product actually has variants in
+    // (see src/seed/sampleImages.ts for why these are generated rather than downloaded), ordered
+    // so the product's default colour (`spec.colours[0]`) comes first, matching the order the
+    // storefront's variant picker will default to. Media rows are matched on `filename` before
+    // creation, which is what keeps a re-seed from doubling every image in the gallery.
+    const productColours = spec.colours.map((colourName) => {
+      const hex = COLOURS.find((candidate) => candidate.name === colourName)?.hex
+      if (hex === undefined) throw new Error(`Unknown seed colour ${colourName} for ${spec.title}`)
+      return { name: colourName, slug: slugify(colourName), hex }
+    })
+
+    const sampleImages = await renderSampleImages({
+      productTitle: spec.title,
+      productSlug: slug,
+      colours: productColours,
+    })
+
+    const galleryEntries: Array<{ image: number; colour: number }> = []
+    for (const image of sampleImages) {
+      const colourId = colourSlugToId.get(image.colourSlug)
+      if (colourId === undefined) {
+        throw new Error(`No colour matches slug ${image.colourSlug} for ${spec.title}`)
+      }
+
+      const existingMedia = await payload.find({
+        collection: 'media',
+        where: { filename: { equals: image.filename } },
+        limit: 1,
+        depth: 0,
+        overrideAccess: true,
+      })
+
+      const found = existingMedia.docs[0]
+      if (found) {
+        galleryEntries.push({ image: asId(found.id), colour: colourId })
+        mediaReusedCount += 1
+        continue
+      }
+
+      const created = await payload.create({
+        collection: 'media',
+        data: { alt: image.alt },
+        file: {
+          data: image.buffer,
+          name: image.filename,
+          mimetype: 'image/webp',
+          size: image.buffer.length,
+        },
+        depth: 0,
+        overrideAccess: true,
+      })
+      galleryEntries.push({ image: asId(created.id), colour: colourId })
+      mediaCreatedCount += 1
+    }
+
+    // Rewritten on every run rather than left alone once set — cheap given the media rows
+    // themselves are reused, and it is what keeps the gallery in step if `PRODUCTS` ever
+    // changes a product's colour list.
+    await payload.update({
+      collection: 'products',
+      id: productId,
+      data: { gallery: galleryEntries },
+      depth: 0,
+      overrideAccess: true,
+    })
   }
 
   // Reconcile every variant against its ledger.
@@ -442,7 +517,8 @@ async function seed(): Promise<void> {
 
   payload.logger.info(
     `Seed complete — ${PRODUCTS.length} products, ${variantCount} new variants, ` +
-      `${inStockCount}/${allVariants.docs.length} variants in stock, ${STAFF_ROLES.length} staff accounts.`,
+      `${inStockCount}/${allVariants.docs.length} variants in stock, ${mediaCreatedCount} images generated ` +
+      `(${mediaReusedCount} reused), ${STAFF_ROLES.length} staff accounts.`,
   )
 }
 
