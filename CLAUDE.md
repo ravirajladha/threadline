@@ -805,3 +805,27 @@ Every one keeps its stub, which is what the test suite and local development con
   machine as well as on it. Supersedes the note in the J4 entry above telling the next session to go
   and clear it — nothing to do. Worth remembering the tell rather than the incident: a CI failure at
   3s with `"steps": []` never ran, so read the check-run annotations API, not the (nonexistent) log.
+- 2026-07-27 [A07 fix]: **The rate-limiter bypass is closed.** `npm run check` green at 1200 unit
+  tests (up from 1176). Owner answered the `docs/FEATURES.md` question: nothing sits in front of
+  Railway — no custom domain, and Cloudflare is R2 media storage only, not a proxy — so the trusted
+  hop count is **1**.
+  `clientKey` took the left-most `x-forwarded-for` entry, which is whatever the caller sent, so a
+  script rotating that header collected a fresh allowance per request and the coupon-apply limit —
+  whose only purpose is to stop code guessing — was bypassable. `clientIpFrom` now counts
+  `TRUSTED_PROXY_HOPS` entries from the **right**, landing on the address Railway's edge appended,
+  which is the last entry an outsider cannot forge: prepended junk only pushes itself further from
+  the end. A test asserts three different forged headers all land in the *same* bucket, which is the
+  property that actually matters.
+  Three deliberate choices. `x-real-ip` was dropped as a fallback rather than kept — it is equally
+  client-settable, so an attacker could simply omit `x-forwarded-for` and rotate that instead, and a
+  fallback chain is what reintroduced the hole. An entry that is not a plausible IP resolves to a
+  single shared `unknown` bucket, never to a neighbouring entry, so being unattributable earns a
+  *worse* allowance than being honest. And a malformed `TRUSTED_PROXY_HOPS` falls back to the default
+  rather than to zero, because reading `one` as "trust nothing" would collapse every visitor into one
+  bucket — an outage from a typo in an env var.
+  `TRUSTED_PROXY_HOPS` documented in `.env.example` with what each value means and how each direction
+  fails; `ARCHITECTURE.md` §9's rate-limiting paragraph rewritten, since it documented the old
+  behaviour as a known limitation. `trustedProxyHops` takes the raw string rather than an environment
+  object — a test that has to build an env bag to exercise a parser is testing the bag, and typing it
+  as a partial `ProcessEnv` tripped TypeScript's weak-type check anyway.
+  Nothing to set on Railway: 1 is the default, so the deployment is already correct.

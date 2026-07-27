@@ -342,10 +342,18 @@ instead of around it, and J11 changes only who makes the request.
 **Rate limiting is a sliding window**, not a fixed one: a fixed window lets a caller spend one
 allowance at 0:59 and the next at 1:01, double the intended rate across exactly the boundary a
 script will find. The clock is injected, so that case is a test rather than a sleep. Coupon apply
-gets the tightest allowance, since an unlimited one is an oracle for guessing codes. Known
-limitation: the caller is identified from `x-forwarded-for`, which a client can set, so the limiter
-is a throttle rather than an access control — closing that needs a trusted-proxy hop count for the
-deployment and is tracked in `docs/FEATURES.md`.
+gets the tightest allowance, since an unlimited one is an oracle for guessing codes.
+
+**The caller is identified from the right of `x-forwarded-for`, not the left.** That header is a list
+each proxy appends to, so the left-most entry is simply whatever the client sent — taking it meant a
+script could put a fresh value there on every request and collect a fresh allowance each time, which
+defeated the coupon limit entirely. `clientIpFrom` counts `TRUSTED_PROXY_HOPS` entries from the end
+instead, landing on the entry appended by the proxy nearest us: Railway's edge appends the true peer
+address after anything supplied, so with one trusted hop prepended junk only pushes itself further
+away. The count is configuration because it is a fact about the deployment — too low leaves the
+bypass open, too high buckets every visitor behind one edge node together. An unattributable caller
+falls into a single shared `unknown` bucket rather than being granted a private one, which is
+deliberately the aggressive direction: a forged header earns a worse allowance than an honest one.
 
 ## 10. Shipping — Shiprocket
 

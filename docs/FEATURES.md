@@ -28,28 +28,7 @@ Priority tags are optional: `[P0]` blocks launch · `[P1]` soon after · `[P2]` 
 
 <!-- Answer inline under each question, then leave it here. It'll move on next session. -->
 
-### Rate limiting can be bypassed by setting a header — how many proxies should we trust?
-
-Found during the J4 security pass, 2026-07-27. Not urgent, but it should be closed before real
-money flows.
-
-`clientKey` in `src/lib/http/rateLimit.ts` identifies a caller by the **left-most** entry of the
-`x-forwarded-for` header. That entry is whatever the client sent: a script can put a random value in
-it on every request and get a fresh allowance each time, which defeats the coupon-apply limit — the
-one that exists specifically to stop someone guessing valid codes.
-
-The fix is to count entries from the **right** instead, skipping exactly as many as there are
-proxies we control, because those are the only entries an outsider cannot forge. That number is a
-fact about the deployment rather than a coding decision, and guessing it fails badly in both
-directions: too few and the bypass stays open, too many and every visitor behind the same edge node
-shares one bucket, so the storefront starts refusing real shoppers.
-
-**Question:** on Railway, does anything sit in front of the app that we control — Cloudflare, a
-custom domain proxy, anything else — or does traffic reach it through Railway's edge alone?
-
-Once answered this becomes a `TRUSTED_PROXY_HOPS` setting read in one place, plus a test per hop
-count. Until then the limiter is a throttle against ordinary traffic, which is what it is documented
-in code as being.
+_(none yet)_
 
 ---
 
@@ -65,7 +44,13 @@ _(none yet)_
 
 <!-- Completed features with the date and the stage that delivered them. -->
 
-_(none yet)_
+- **2026-07-27 · rate limiting keyed on the real client IP.** Raised by the J4 security pass:
+  `clientKey` took the **left-most** `x-forwarded-for` entry, which is whatever the caller sent, so
+  rotating that header earned a fresh allowance per request and defeated the coupon-apply limit.
+  Owner confirmed the deployment has nothing in front of Railway — no custom domain, and Cloudflare
+  is used for R2 media only — so `TRUSTED_PROXY_HOPS` defaults to **1** and `clientIpFrom` counts one
+  entry from the right, which on Railway is the peer address its edge appended and an outsider cannot
+  forge. An unattributable caller shares one `unknown` bucket rather than getting a private one.
 
 ---
 

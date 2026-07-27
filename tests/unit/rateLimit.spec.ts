@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clientIpFrom,
   clientKey,
+  DEFAULT_TRUSTED_PROXY_HOPS,
   MemoryRateLimiterStore,
+  normaliseIp,
   RATE_LIMITS,
   RateLimiter,
+  trustedProxyHops,
+  UNKNOWN_CLIENT,
   type RateLimitRule,
 } from '@/lib/http/rateLimit'
 
@@ -135,26 +140,140 @@ describe('RATE_LIMITS', () => {
   })
 })
 
+describe('normaliseIp', () => {
+  it.each([
+    ['203.0.113.7', '203.0.113.7'],
+    ['  203.0.113.7  ', '203.0.113.7'],
+    ['203.0.113.7:44321', '203.0.113.7'],
+    ['2001:db8::1', '2001:db8::1'],
+    ['2001:DB8::1', '2001:db8::1'],
+    ['[2001:db8::1]:443', '2001:db8::1'],
+  ])('accepts %o as %o', (input, expected) => {
+    expect(normaliseIp(input)).toBe(expected)
+  })
+
+  it.each([
+    ['an empty string', ''],
+    ['whitespace', '   '],
+    ['a hostname', 'evil.example.com'],
+    ['arbitrary text', 'not-an-ip'],
+    ['an out-of-range octet', '999.0.0.1'],
+    ['a truncated address', '203.0.113'],
+    ['an injected key', 'a".repeat(10)'],
+  ])('rejects %s', (_label, input) => {
+    // The point is not RFC compliance. It is that arbitrary text a caller controls cannot become a
+    // rate-limit bucket of its own.
+    expect(normaliseIp(input)).toBeNull()
+  })
+
+  it('rejects an absurdly long value rather than keying on it', () => {
+    expect(normaliseIp('1'.repeat(200))).toBeNull()
+  })
+})
+
+describe('clientIpFrom', () => {
+  it('takes the entry the nearest trusted proxy appended, counting from the right', () => {
+    // Railway appends the true peer address last, so with one trusted hop that is the real client.
+    const headers = new Headers({ 'x-forwarded-for': '203.0.113.7, 198.51.100.9' })
+
+    expect(clientIpFrom(headers, 1)).toBe('198.51.100.9')
+  })
+
+  it('resists a forged header — this is the bypass it exists to close', () => {
+    // A script putting a fresh value in the header on every request used to get a fresh allowance
+    // each time, defeating the coupon-apply limit whose whole purpose is to stop code guessing.
+    // Railway appends the real address after whatever was supplied, so prepended junk only pushes
+    // itself further from the end.
+    const forged = ['9.9.9.9', 'evil.example.com', '1.1.1.1'].map(
+      (spoof) => new Headers({ 'x-forwarded-for': `${spoof}, 198.51.100.9` }),
+    )
+
+    for (const headers of forged) {
+      expect(clientIpFrom(headers, 1)).toBe('198.51.100.9')
+    }
+
+    // All three land in the same bucket, which is the property that matters.
+    expect(new Set(forged.map((headers) => clientKey(headers, 'couponApply'))).size).toBe(1)
+  })
+
+  it('counts further left when more proxies are trusted', () => {
+    const headers = new Headers({ 'x-forwarded-for': '203.0.113.7, 198.51.100.9, 10.0.0.1' })
+
+    expect(clientIpFrom(headers, 2)).toBe('198.51.100.9')
+    expect(clientIpFrom(headers, 3)).toBe('203.0.113.7')
+  })
+
+  it('trusts nothing when there is no proxy in front', () => {
+    // Zero hops means the header is entirely caller-written, so no entry in it is worth reading.
+    const headers = new Headers({ 'x-forwarded-for': '203.0.113.7' })
+
+    expect(clientIpFrom(headers, 0)).toBeNull()
+  })
+
+  it('returns null when the chain is shorter than the trusted hop count', () => {
+    // Fewer entries than expected means something is not as configured. Guessing at an entry anyway
+    // is what would reopen the bypass, so it does not.
+    const headers = new Headers({ 'x-forwarded-for': '203.0.113.7' })
+
+    expect(clientIpFrom(headers, 3)).toBeNull()
+  })
+
+  it('never falls back to another entry when the trusted one is not an IP', () => {
+    const headers = new Headers({ 'x-forwarded-for': '203.0.113.7, garbage' })
+
+    expect(clientIpFrom(headers, 1)).toBeNull()
+  })
+
+  it('ignores empty entries when locating the trusted one', () => {
+    expect(clientIpFrom(new Headers({ 'x-forwarded-for': ' , 198.51.100.9' }), 1)).toBe('198.51.100.9')
+  })
+
+  it('returns null with no header at all', () => {
+    expect(clientIpFrom(new Headers(), 1)).toBeNull()
+  })
+})
+
+describe('trustedProxyHops', () => {
+  it('defaults to one, for Railway edge alone', () => {
+    expect(trustedProxyHops(undefined)).toBe(DEFAULT_TRUSTED_PROXY_HOPS)
+    expect(trustedProxyHops('  ')).toBe(DEFAULT_TRUSTED_PROXY_HOPS)
+  })
+
+  it('reads an explicit count, including zero', () => {
+    expect(trustedProxyHops('2')).toBe(2)
+    expect(trustedProxyHops('0')).toBe(0)
+  })
+
+  it('falls back to the default on a malformed value, not to zero', () => {
+    // Reading `one` as "trust nothing" would collapse every visitor into a single bucket — an
+    // outage caused by a typo in an env var.
+    expect(trustedProxyHops('one')).toBe(DEFAULT_TRUSTED_PROXY_HOPS)
+    expect(trustedProxyHops('-3')).toBe(DEFAULT_TRUSTED_PROXY_HOPS)
+  })
+})
+
 describe('clientKey', () => {
-  it('takes the left-most forwarded address — the original client, not the nearest proxy', () => {
-    const headers = new Headers({ 'x-forwarded-for': '203.0.113.7, 10.0.0.1, 10.0.0.2' })
-
-    expect(clientKey(headers)).toBe('203.0.113.7')
-  })
-
-  it('falls back to x-real-ip, then to a constant', () => {
-    expect(clientKey(new Headers({ 'x-real-ip': '198.51.100.4' }))).toBe('198.51.100.4')
-    expect(clientKey(new Headers())).toBe('unknown')
-  })
-
   it('salts the key, so one address gets a separate allowance per action', () => {
-    const headers = new Headers({ 'x-real-ip': '198.51.100.4' })
+    const headers = new Headers({ 'x-forwarded-for': '198.51.100.4' })
 
     expect(clientKey(headers, 'checkout')).toBe('checkout:198.51.100.4')
     expect(clientKey(headers, 'checkout')).not.toBe(clientKey(headers, 'cartMutation'))
   })
 
-  it('ignores an empty forwarded entry rather than keying everyone on the empty string', () => {
-    expect(clientKey(new Headers({ 'x-forwarded-for': ' , 10.0.0.1' }))).toBe('unknown')
+  it('puts every unattributable caller in one shared bucket', () => {
+    // Deliberately the aggressive direction: a forged or absent header earns a *worse* allowance
+    // than an honest one, never a private one.
+    expect(clientKey(new Headers())).toBe(UNKNOWN_CLIENT)
+    expect(clientKey(new Headers({ 'x-forwarded-for': 'garbage' }))).toBe(UNKNOWN_CLIENT)
+  })
+
+  it('still limits in local development, where there is no proxy', () => {
+    const { limiter } = limiterAt()
+    const headers = new Headers()
+
+    expect(limiter.check(clientKey(headers, 'couponApply'), RULE).ok).toBe(true)
+    expect(limiter.check(clientKey(headers, 'couponApply'), RULE).ok).toBe(true)
+    expect(limiter.check(clientKey(headers, 'couponApply'), RULE).ok).toBe(true)
+    expect(limiter.check(clientKey(headers, 'couponApply'), RULE).ok).toBe(false)
   })
 })
