@@ -71,7 +71,16 @@ export default async function StorefrontLayout({ children }: { children: React.R
       <head>
         <ThemeScript />
       </head>
-      <body className="bg-bg text-fg flex min-h-dvh flex-col antialiased">
+      {/*
+        `suppressHydrationWarning` is needed on `<body>` as well as `<html>`, not only on the
+        latter: React applies it to the element it is written on, never to descendants. Password
+        managers, ad blockers and colour pickers all inject their own attributes onto `<body>`
+        (`bis_register`, `cz-shortcut-listen`) between the server HTML arriving and hydration
+        running, and the resulting attribute diff is a console error we can neither reproduce nor
+        control. Suppressing exactly one element's attributes keeps a genuine mismatch anywhere
+        inside the tree still reported.
+      */}
+      <body suppressHydrationWarning className="bg-bg text-fg flex min-h-dvh flex-col antialiased">
         <a
           href="#main"
           className="bg-accent text-accent-fg focus:ring-accent sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-control focus:px-4 focus:py-2 focus:ring-2 focus:outline-none"
