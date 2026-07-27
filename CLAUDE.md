@@ -492,9 +492,58 @@ Routes: `/cart` · `/checkout` · `/checkout/success`. API: cart mutations · `/
 - [x] `docs/ARCHITECTURE.md` §9 written
 
 ### [ ] J5 — Orders & fulfilment + scheduler *(stubbed courier)*
-Order status machine, `ShippingProvider` interface with a **`StubShippingProvider`** that
-fabricates an AWB and advances tracking on demand, delivery webhook, and one scheduler registry
-(abandoned cart, status sync, stock alerts, review requests) on secret-protected cron routes.
+**Goal:** an order can be fulfilled. Staff move it packed → shipped, a courier is asked for an AWB,
+tracking advances the status through a signature-verified webhook, and four recurring jobs run from
+one registry on secret-protected cron routes. The courier is a `StubShippingProvider`; the webhook
+verification, the idempotency and the status machine around it are real.
+
+No schema change: `orders` already carries `awbCode`, `courier` and `shiprocketOrderId`, and
+`orderEvents` is already the audit trail. Nothing here needs a migration.
+
+**Shipping — `src/lib/shipping/`**
+- [x] `types.ts` — `ShippingProvider`, `ShipmentRequest`, `Shipment`, `TrackingEvent`. The interface
+      is shaped around what must be trusted, so a stub cannot fake the part that matters: creating a
+      shipment may be fabricated, `verifyWebhook` is the security boundary
+- [x] `statusMap.ts` — a courier's vocabulary → our `OrderStatus`. Unknown codes are **ignored, not
+      guessed**: inventing a status from a string we do not recognise is how an undelivered order
+      gets marked delivered. Pure, table-driven, exhaustive over `ORDER_STATUSES`
+- [x] `stubProvider.ts` — fabricates a deterministic AWB, advances tracking on demand, and **signs
+      its webhook for real** so the local flow runs over verification rather than around it
+- [x] `factory.ts` — selects by environment; throws at startup if production has no real provider
+- [ ] `payloadShipping.ts` — the port: attach an AWB to an order, apply a tracking event
+      idempotently by event id, and move status only through the orders port so every change still
+      writes an `orderEvents` row
+
+**Fulfilment — `src/lib/orders/`**
+- [x] `fulfilment.ts` — pure: given an order's status, which fulfilment actions are legal, and the
+      typed reason each refused one was refused. Staff UI renders this rather than deciding it
+- [ ] `payloadFulfilment.ts` — pack and ship, each re-checking the role and reusing `transition`'s
+      row lock rather than writing status directly
+
+**Scheduler — `src/lib/scheduler/`**
+- [ ] `types.ts` — `Job` (name, description, handler) and `JobResult`. A job reports what it did in
+      counts, so a cron run is auditable without reading logs
+- [ ] `registry.ts` — **one** registry. A duplicate job name throws at module load, not at 3am;
+      lookup by name is the only way a route can reach a handler, so a URL cannot name arbitrary code
+- [ ] `runner.ts` — runs one job with a timeout, catches its throw into a failed `JobResult`, and
+      records the duration. One job failing must never take the others with it
+- [ ] `jobs/abandonedCart.ts` · `statusSync.ts` · `stockAlerts.ts` · `reviewRequests.ts` — each a
+      pure decision (which rows qualify, given a clock) plus a thin port. Notifications are queued
+      through J6's dispatcher once it exists; until then they write the `notifications` row directly
+
+**Surfaces**
+- [ ] `/api/cron/[job]` — `CRON_SECRET` required, compared in constant time. A bad secret or an
+      unknown job name is a **404, never a 401** (CLAUDE.md §2), so the route does not confirm which
+      jobs exist. Runs exactly one job per request
+- [ ] `/api/webhooks/shipping` — verify signature over the raw body → parse → idempotent apply.
+      Unverified is a 400 with no detail
+- [ ] `/api/shipping/simulate` — development only, feeds a genuinely signed tracking event through
+      the real webhook handler. Refuses unless the provider really is the stub; 404 if not
+- [ ] Admin: fulfilment actions on the order view, driven by `fulfilment.ts`
+- [ ] OWASP pass: A01 fulfilment endpoints re-check the role, A04 status changes go through the
+      machine and the row lock, A08 webhook signature + idempotency by event id, A09 every tracking
+      event and job run logged without PII, A10 no user-supplied URL is ever fetched
+- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §10 and §11 written
 
 ### [ ] J6 — Notifications *(stubbed delivery)*
 Single `notify.dispatch(event, payload)` API with a **`ConsoleChannel`** that renders the template,
@@ -713,3 +762,40 @@ Every one keeps its stub, which is what the test suite and local development con
   `npm run test:e2e` (still only proves J3 — no spec covers cart → checkout yet, and that gap is now
   the largest untested surface) and `npm run build`. `npm run seed` only if the catalog is stale;
   the schema did not change this session, so no migration was generated.
+- 2026-07-27 [J5, part 1 of n]: **Stage expanded and the shipping contract built — no ports, no
+  routes, no scheduler yet.** `npm run check` green at 1176 unit tests (up from 1108). J5 is
+  deliberately still `[ ]`.
+  Expanded J5 with its task list first, per §0. Confirmed while doing so that **no migration is
+  needed**: `orders` already carries `awbCode`, `courier` and `shiprocketOrderId` from J1, and
+  `orderEvents` is already the audit trail, so nothing in this stage touches the schema.
+  Shipped: `shipping/types.ts`, `statusMap.ts`, `stubProvider.ts`, `factory.ts` and
+  `orders/fulfilment.ts`, all pure or stub, all unit-tested.
+  Two design decisions worth keeping. **A courier status maps to one of three answers, not to a
+  nullable status.** `{ kind: 'status' }`, `{ kind: 'no_change' }` and `{ kind: 'unknown' }` are
+  genuinely different facts: "PICKUP SCHEDULED" is recognised and moves nothing, while "TELEPORTED"
+  means the integration has drifted and somebody should hear about it. Collapsing both into `null`
+  is how tracking silently stops working after a provider renames a code. The case this exists for
+  is `UNDELIVERED` — the obvious substring fallback ("contains 'deliver'") would mark an undelivered
+  parcel delivered, closing the order and stopping the customer being chased, so there is no
+  fallback at all and a test pins it.
+  And **`fulfilment.ts` asks the status machine rather than restating it.** It only adds the
+  conditions a transition cannot express — no shipping without an AWB, no packing a prepaid order
+  that has not been paid for — and refusals are ordered so the *most fundamental* reason wins: a
+  cancelled order reports `illegal_transition`, not "book a courier first", because the latter reads
+  as an instruction. A test walks every `ORDER_STATUSES` value against `canTransition` to prove this
+  file can only ever be stricter than the graph, never more permissive; that is the guard against
+  the two drifting apart.
+  Also caught in passing: I had copy-pasted the status normaliser into `stubProvider.ts` as
+  `normaliseForSequence`, identical to `statusMap`'s. Deleted, now imported — §3 forbids exactly
+  that. The stub's tracking sequence uses the **real** Shiprocket status strings, and a test asserts
+  every one of them is a status `statusMap` understands, so the local flow cannot be driven by
+  tokens the real mapper would reject.
+  `.env.example` documents `SHIPPING_PROVIDER` and `SHIPPING_WEBHOOK_SECRET`; the factory reads
+  both, and neither existed before.
+  **Exact next action:** write `src/lib/shipping/payloadShipping.ts` — attach an AWB to an order and
+  apply a tracking event idempotently by event id, reusing `payloadOrders.transition` (and therefore
+  its row lock) rather than writing `status` directly. The idempotency check has the same shape as
+  `applyPaymentEvent`'s and should read the event id out of the `orderEvents` trail the same way;
+  note that `processedEventIdsFrom` in `paymentApply.ts` matches on `evt_`/`stub_evt_` prefixes and
+  will **not** match a `stub_trk_` tracking id, so that helper needs a parameter rather than a
+  second copy. Then `orders/payloadFulfilment.ts`, then the three routes.
