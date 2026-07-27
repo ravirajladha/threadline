@@ -88,7 +88,7 @@ export function ThemeToggle(): React.ReactElement {
       onClick={toggle}
       aria-pressed={theme === 'dark'}
       aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-      className="text-fg-muted hover:text-fg hover:bg-surface-raised rounded-[--radius-control] p-2 transition-colors duration-fast ease-out"
+      className="text-fg-muted hover:text-fg hover:bg-surface-raised rounded-control p-2 transition-colors duration-fast ease-out"
     >
       {theme === 'dark' ? <SunIcon className="size-5" /> : <MoonIcon className="size-5" />}
     </button>

@@ -147,7 +147,7 @@ export function VariantPicker({
               return (
                 <label
                   key={pill.sizeId}
-                  className="focus-within:outline-accent inline-flex cursor-pointer rounded-[--radius-control] focus-within:outline-2 focus-within:outline-offset-2"
+                  className="focus-within:outline-accent inline-flex cursor-pointer rounded-control focus-within:outline-2 focus-within:outline-offset-2"
                 >
                   <input
                     type="radio"
@@ -162,7 +162,7 @@ export function VariantPicker({
                     className="sr-only"
                   />
                   <span
-                    className={`rounded-[--radius-control] border px-4 py-2 text-sm transition-colors duration-fast ease-out ${
+                    className={`rounded-control border px-4 py-2 text-sm transition-colors duration-fast ease-out ${
                       checked ? 'border-accent bg-accent-subtle text-fg' : 'border-border-strong text-fg'
                     } ${unavailable ? 'text-fg-subtle line-through' : ''}`}
                   >
@@ -182,7 +182,7 @@ export function VariantPicker({
       {!isSoldOutPick ? (
         <div>
           <p className="text-fg mb-2 text-sm font-medium">Quantity</p>
-          <div className="border-border-strong inline-flex items-center rounded-[--radius-control] border">
+          <div className="border-border-strong inline-flex items-center rounded-control border">
             <button
               type="button"
               onClick={() => setChosenQuantity(Math.max(1, quantity - 1))}
@@ -228,7 +228,7 @@ export function VariantPicker({
           onClick={() => {
             void handleAddToBag()
           }}
-          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
+          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSoldOutPick ? 'Notify me' : adding ? 'Adding…' : 'Add to bag'}
         </button>

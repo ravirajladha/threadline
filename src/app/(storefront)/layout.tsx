@@ -74,7 +74,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
       <body className="bg-bg text-fg flex min-h-dvh flex-col antialiased">
         <a
           href="#main"
-          className="bg-accent text-accent-fg focus:ring-accent sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-[--radius-control] focus:px-4 focus:py-2 focus:ring-2 focus:outline-none"
+          className="bg-accent text-accent-fg focus:ring-accent sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-control focus:px-4 focus:py-2 focus:ring-2 focus:outline-none"
         >
           Skip to content
         </a>

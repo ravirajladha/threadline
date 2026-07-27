@@ -41,13 +41,13 @@ export default async function CheckoutFailedPage() {
       <div className="mt-8 flex flex-wrap justify-center gap-3">
         <Link
           href="/cart"
-          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
         >
           Back to your bag
         </Link>
         <Link
           href="/shop"
-          className="border-border-strong text-fg hover:bg-surface rounded-[--radius-control] border px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+          className="border-border-strong text-fg hover:bg-surface rounded-control border px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
         >
           Keep shopping
         </Link>

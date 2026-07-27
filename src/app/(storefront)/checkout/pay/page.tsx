@@ -41,7 +41,7 @@ export default async function PayPage() {
           action={
             <Link
               href="/shop"
-              className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+              className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
             >
               Continue shopping
             </Link>

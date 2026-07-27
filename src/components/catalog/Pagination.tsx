@@ -42,7 +42,7 @@ export function Pagination({ basePath, filters, page, pageCount }: PaginationPro
         <Link
           href={filtersToHref(basePath, withPage(filters, page - 1))}
           aria-label="Previous page"
-          className="text-fg-muted hover:text-fg hover:bg-surface-raised flex size-9 items-center justify-center rounded-[--radius-control] transition-colors duration-fast ease-out"
+          className="text-fg-muted hover:text-fg hover:bg-surface-raised flex size-9 items-center justify-center rounded-control transition-colors duration-fast ease-out"
         >
           <ChevronLeftIcon className="size-4" />
         </Link>
@@ -61,7 +61,7 @@ export function Pagination({ basePath, filters, page, pageCount }: PaginationPro
           <span
             key={entry}
             aria-current="page"
-            className="bg-accent text-accent-fg flex size-9 items-center justify-center rounded-[--radius-control] text-sm font-medium"
+            className="bg-accent text-accent-fg flex size-9 items-center justify-center rounded-control text-sm font-medium"
           >
             {entry}
           </span>
@@ -69,7 +69,7 @@ export function Pagination({ basePath, filters, page, pageCount }: PaginationPro
           <Link
             key={entry}
             href={filtersToHref(basePath, withPage(filters, entry))}
-            className="text-fg-muted hover:text-fg hover:bg-surface-raised flex size-9 items-center justify-center rounded-[--radius-control] text-sm transition-colors duration-fast ease-out"
+            className="text-fg-muted hover:text-fg hover:bg-surface-raised flex size-9 items-center justify-center rounded-control text-sm transition-colors duration-fast ease-out"
           >
             {entry}
           </Link>
@@ -80,7 +80,7 @@ export function Pagination({ basePath, filters, page, pageCount }: PaginationPro
         <Link
           href={filtersToHref(basePath, withPage(filters, page + 1))}
           aria-label="Next page"
-          className="text-fg-muted hover:text-fg hover:bg-surface-raised flex size-9 items-center justify-center rounded-[--radius-control] transition-colors duration-fast ease-out"
+          className="text-fg-muted hover:text-fg hover:bg-surface-raised flex size-9 items-center justify-center rounded-control transition-colors duration-fast ease-out"
         >
           <ChevronRightIcon className="size-4" />
         </Link>

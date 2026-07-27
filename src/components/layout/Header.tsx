@@ -33,6 +33,15 @@ export function Header({ categories, bagCount = 0 }: HeaderProps): React.ReactEl
     <header
       id="site-header"
       data-scrolled="false"
+      // `HAIRLINE_SCRIPT` below runs the moment the browser parses it — before React hydrates —
+      // and sets `data-scrolled` from the real scroll position. On a reload that restores scroll,
+      // or a deep link to an anchor, that is `"true"` while the server rendered `"false"`, and
+      // React reports the difference as a hydration mismatch.
+      //
+      // Suppressing it is correct rather than a workaround: the attribute is deliberately owned
+      // by the DOM, not by React, precisely so the whole header does not have to become a client
+      // component for one border. This is the same reason `<html>` carries it for the theme.
+      suppressHydrationWarning
       className="bg-bg/95 sticky top-0 z-40 border-b border-transparent backdrop-blur data-[scrolled=true]:border-border"
     >
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4 sm:px-6">
@@ -70,7 +79,7 @@ export function Header({ categories, bagCount = 0 }: HeaderProps): React.ReactEl
             type="button"
             disabled
             aria-label="Search (coming soon)"
-            className="text-fg-muted rounded-[--radius-control] p-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-fg-muted rounded-control p-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <SearchIcon className="size-5" />
           </button>
@@ -78,7 +87,7 @@ export function Header({ categories, bagCount = 0 }: HeaderProps): React.ReactEl
             type="button"
             disabled
             aria-label="Account (coming soon)"
-            className="text-fg-muted rounded-[--radius-control] p-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-fg-muted rounded-control p-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <UserIcon className="size-5" />
           </button>
@@ -87,7 +96,7 @@ export function Header({ categories, bagCount = 0 }: HeaderProps): React.ReactEl
             // The count is in the label rather than only in the badge, so it is announced on
             // focus instead of being a number a screen reader reads out with no context.
             aria-label={bagCount > 0 ? `Bag, ${bagCount} item${bagCount === 1 ? '' : 's'}` : 'Bag, empty'}
-            className="text-fg-muted hover:text-fg relative rounded-[--radius-control] p-2 transition-colors duration-fast ease-out"
+            className="text-fg-muted hover:text-fg relative rounded-control p-2 transition-colors duration-fast ease-out"
           >
             <BagIcon className="size-5" />
             {bagCount > 0 ? (

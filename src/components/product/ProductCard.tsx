@@ -22,7 +22,7 @@ export function ProductCard({ product }: ProductCardProps): React.ReactElement {
   return (
     <Link href={`/p/${slug}`} className="group flex flex-col gap-3">
       <div
-        className="bg-surface-raised relative overflow-hidden rounded-[--radius-card]"
+        className="bg-surface-raised relative overflow-hidden rounded-card"
         style={{ aspectRatio: '4 / 5' }}
       >
         {image ? (
@@ -49,14 +49,14 @@ export function ProductCard({ product }: ProductCardProps): React.ReactElement {
 
         {isSoldOut ? (
           <div className="absolute inset-0 flex items-center justify-center bg-fg/10">
-            <span className="bg-surface text-fg rounded-[--radius-control] px-3 py-1 text-xs font-medium">
+            <span className="bg-surface text-fg rounded-control px-3 py-1 text-xs font-medium">
               Sold out
             </span>
           </div>
         ) : null}
 
         {!isSoldOut && lowStockQty !== null ? (
-          <span className="bg-surface text-warning absolute top-2 left-2 rounded-[--radius-control] px-2 py-1 text-xs font-medium">
+          <span className="bg-surface text-warning absolute top-2 left-2 rounded-control px-2 py-1 text-xs font-medium">
             Only {lowStockQty} left
           </span>
         ) : null}

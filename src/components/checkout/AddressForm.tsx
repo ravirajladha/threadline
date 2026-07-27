@@ -103,7 +103,7 @@ export function AddressForm({
     errors[field] !== undefined ? errorId(field) : undefined
 
   const inputClasses = (field: AddressField): string =>
-    `bg-surface text-fg placeholder:text-fg-subtle w-full rounded-[--radius-control] border px-3 py-2 text-sm disabled:opacity-60 ${
+    `bg-surface text-fg placeholder:text-fg-subtle w-full rounded-control border px-3 py-2 text-sm disabled:opacity-60 ${
       errors[field] !== undefined ? 'border-danger' : 'border-border'
     }`
 
@@ -263,7 +263,7 @@ export function AddressForm({
             type="text"
             readOnly
             value={value.country}
-            className="border-border bg-surface-raised text-fg-muted w-full rounded-[--radius-control] border px-3 py-2 text-sm"
+            className="border-border bg-surface-raised text-fg-muted w-full rounded-control border px-3 py-2 text-sm"
           />
         </div>
       </div>

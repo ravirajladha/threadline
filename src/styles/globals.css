@@ -29,6 +29,15 @@
 
   --radius-control: var(--radius-control);
   --radius-card: var(--radius-card);
+
+  /*
+   * Motion. These were defined in tokens.css but never mapped here, so `duration-fast` — used in
+   * 44 places — generated no rule at all and every hover transition was instant. A token that
+   * Tailwind does not know about is a token that silently does nothing.
+   */
+  --transition-duration-fast: var(--duration-fast);
+  --transition-duration-base: var(--duration-base);
+  --ease-out: var(--ease-out);
 }
 
 html {

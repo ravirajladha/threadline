@@ -82,7 +82,7 @@ export function PaymentStep({
         {methods.map((candidate) => (
           <label
             key={candidate}
-            className={`flex cursor-pointer items-start gap-3 rounded-[--radius-control] border p-4 transition-colors duration-fast ease-out ${
+            className={`flex cursor-pointer items-start gap-3 rounded-control border p-4 transition-colors duration-fast ease-out ${
               candidate === method ? 'border-accent bg-accent-subtle' : 'border-border hover:bg-surface-raised'
             }`}
           >
@@ -115,7 +115,7 @@ export function PaymentStep({
       </fieldset>
 
       {showPoints ? (
-        <div className="border-border flex flex-col gap-2 rounded-[--radius-control] border p-4">
+        <div className="border-border flex flex-col gap-2 rounded-control border p-4">
           <label htmlFor={pointsId} className="text-fg text-sm font-medium">
             Use loyalty points
           </label>
@@ -146,13 +146,13 @@ export function PaymentStep({
               }}
               aria-invalid={loyaltyRejection !== null}
               aria-describedby={loyaltyRejection !== null ? `${pointsId}-error` : undefined}
-              className="border-border bg-surface text-fg w-32 rounded-[--radius-control] border px-3 py-2 text-sm disabled:opacity-60"
+              className="border-border bg-surface text-fg w-32 rounded-control border px-3 py-2 text-sm disabled:opacity-60"
             />
             <button
               type="button"
               onClick={() => onLoyaltyPointsChange(loyaltyPointsAvailable)}
               disabled={pending || loyaltyPointsAvailable === 0 || loyaltyPointsRequested === loyaltyPointsAvailable}
-              className="border-border-strong text-fg hover:bg-surface-raised rounded-[--radius-control] border px-4 py-2 text-sm transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-50"
+              className="border-border-strong text-fg hover:bg-surface-raised rounded-control border px-4 py-2 text-sm transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-50"
             >
               Use all
             </button>
@@ -185,7 +185,7 @@ export function PaymentStep({
           type="button"
           onClick={onPlaceOrder}
           disabled={!canPlaceOrder || pending}
-          className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex items-center justify-center gap-2 rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
+          className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex items-center justify-center gap-2 rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? 'Placing your order…' : 'Place order'}
         </button>

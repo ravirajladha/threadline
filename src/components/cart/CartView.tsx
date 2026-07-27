@@ -91,7 +91,7 @@ export function CartView({
         action={
           <Link
             href={shopHref}
-            className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+            className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
           >
             Start shopping
           </Link>
@@ -132,7 +132,7 @@ export function CartView({
               {cart.canCheckout ? (
                 <Link
                   href={checkoutHref}
-                  className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex justify-center rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+                  className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex justify-center rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
                 >
                   Checkout
                 </Link>
@@ -141,7 +141,7 @@ export function CartView({
                   type="button"
                   disabled
                   aria-describedby={blocked ? 'cart-blocked' : undefined}
-                  className="bg-accent text-accent-fg cursor-not-allowed rounded-[--radius-control] px-6 py-3 text-sm font-medium opacity-60"
+                  className="bg-accent text-accent-fg cursor-not-allowed rounded-control px-6 py-3 text-sm font-medium opacity-60"
                 >
                   Checkout
                 </button>

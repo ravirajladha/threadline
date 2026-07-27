@@ -35,7 +35,7 @@ export function SortSelect({ filters, basePath }: SortSelectProps): React.ReactE
           onChange={(event) => {
             router.push(filtersToHref(basePath, withSort(filters, event.target.value as CatalogSort)))
           }}
-          className="border-border bg-surface text-fg rounded-[--radius-control] border py-2 pr-8 pl-3 text-sm appearance-none"
+          className="border-border bg-surface text-fg rounded-control border py-2 pr-8 pl-3 text-sm appearance-none"
         >
           {CATALOG_SORTS.map((sort) => (
             <option key={sort} value={sort}>

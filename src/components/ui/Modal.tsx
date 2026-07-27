@@ -20,7 +20,7 @@ import { CloseIcon } from './icons'
  * than competing with it for the same properties — a bottom sheet or a side drawer sets its own
  * size, position and corners in one string instead of fighting a default for the same box.
  */
-const DEFAULT_BOX_CLASSES = 'm-auto w-full max-w-lg rounded-[--radius-card]'
+const DEFAULT_BOX_CLASSES = 'm-auto w-full max-w-lg rounded-card'
 
 export interface ModalProps {
   open: boolean
@@ -116,7 +116,7 @@ export function Modal({
           type="button"
           onClick={() => dialogRef.current?.close()}
           aria-label="Close"
-          className="text-fg-muted hover:text-fg hover:bg-surface-raised rounded-[--radius-control] p-1.5 transition-colors duration-fast ease-out"
+          className="text-fg-muted hover:text-fg hover:bg-surface-raised rounded-control p-1.5 transition-colors duration-fast ease-out"
         >
           <CloseIcon className="size-5" />
         </button>

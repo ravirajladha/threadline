@@ -23,7 +23,7 @@ export interface OrderSummaryProps {
 export function OrderSummary({ cart, children, pending = false }: OrderSummaryProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-4">
-      <details open className="border-border bg-surface rounded-[--radius-card] border p-4 md:p-6">
+      <details open className="border-border bg-surface rounded-card border p-4 md:p-6">
         <summary className="text-fg cursor-pointer list-none text-base font-medium">
           {cart.pricing.itemCount === 1 ? '1 item in this order' : `${cart.pricing.itemCount} items in this order`}
         </summary>
@@ -34,7 +34,7 @@ export function OrderSummary({ cart, children, pending = false }: OrderSummaryPr
         </ul>
       </details>
 
-      {children ? <div className="border-border bg-surface rounded-[--radius-card] border p-4 md:p-6">{children}</div> : null}
+      {children ? <div className="border-border bg-surface rounded-card border p-4 md:p-6">{children}</div> : null}
 
       <CartSummary pricing={cart.pricing} heading="Total" pending={pending} />
     </div>

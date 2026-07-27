@@ -186,7 +186,7 @@ export function CheckoutView({
         action={
           <Link
             href={shopHref}
-            className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+            className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
           >
             Start shopping
           </Link>
@@ -199,7 +199,7 @@ export function CheckoutView({
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-12">
       <div className="flex min-w-0 flex-col gap-10">
         {!cart.canCheckout ? (
-          <p role="alert" className="border-danger text-danger rounded-[--radius-control] border p-4 text-sm">
+          <p role="alert" className="border-danger text-danger rounded-control border p-4 text-sm">
             Some items in your bag need attention before you can pay.{' '}
             <Link href={cartHref} className="underline underline-offset-2">
               Go back to your bag
@@ -222,7 +222,7 @@ export function CheckoutView({
             disabled={placing}
             aria-invalid={emailError !== null}
             aria-describedby={emailError !== null ? 'checkout-email-error' : undefined}
-            className={`bg-surface text-fg mt-1 w-full max-w-md rounded-[--radius-control] border px-3 py-2 text-sm disabled:opacity-60 ${
+            className={`bg-surface text-fg mt-1 w-full max-w-md rounded-control border px-3 py-2 text-sm disabled:opacity-60 ${
               emailError !== null ? 'border-danger' : 'border-border'
             }`}
           />
@@ -286,7 +286,7 @@ export function CheckoutView({
         />
 
         {shortages.length > 0 ? (
-          <div role="alert" className="border-danger rounded-[--radius-control] border p-4">
+          <div role="alert" className="border-danger rounded-control border p-4">
             <p className="text-danger text-sm font-medium">
               Stock moved while you were checking out.
             </p>

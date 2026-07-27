@@ -47,7 +47,7 @@ export default async function CheckoutSuccessPage() {
           action={
             <Link
               href="/shop"
-              className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+              className="bg-accent text-accent-fg hover:bg-accent-hover inline-flex rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
             >
               Continue shopping
             </Link>
@@ -68,10 +68,10 @@ export default async function CheckoutSuccessPage() {
         </p>
       </div>
 
-      <div className="border-border rounded-[--radius-surface] border p-6">
+      <div className="border-border rounded-card border p-6">
         <p className="text-fg-muted mb-6 text-sm">{paymentLine(order.paymentStatus, order.paymentMethod)}</p>
 
-        <ul className="border-border flex flex-col divide-y divide-[--color-border]">
+        <ul className="divide-border flex flex-col divide-y">
           {order.lines.map((line) => (
             <li key={String(line.id)} className="flex items-baseline justify-between gap-4 py-3 first:pt-0">
               <div className="min-w-0">

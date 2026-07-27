@@ -41,7 +41,7 @@ export function SizeChartModal({ chart, open, onClose }: SizeChartModalProps): R
     <Modal open={open} onClose={onClose} title={chart?.title ?? 'Size guide'}>
       {chart ? (
         <div className="flex flex-col gap-4">
-          <div role="radiogroup" aria-label="Measurement unit" className="border-border-strong inline-flex self-start rounded-[--radius-control] border p-0.5">
+          <div role="radiogroup" aria-label="Measurement unit" className="border-border-strong inline-flex self-start rounded-control border p-0.5">
             {(['in', 'cm'] as const).map((option) => (
               <button
                 key={option}
@@ -49,7 +49,7 @@ export function SizeChartModal({ chart, open, onClose }: SizeChartModalProps): R
                 role="radio"
                 aria-checked={unit === option}
                 onClick={() => setUnit(option)}
-                className={`rounded-[--radius-control] px-3 py-1.5 text-sm transition-colors duration-fast ease-out ${
+                className={`rounded-control px-3 py-1.5 text-sm transition-colors duration-fast ease-out ${
                   unit === option ? 'bg-accent text-accent-fg' : 'text-fg-muted'
                 }`}
               >

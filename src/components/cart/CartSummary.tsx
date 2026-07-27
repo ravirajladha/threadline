@@ -79,7 +79,7 @@ export function CartSummary({
     <section
       aria-label={heading}
       aria-busy={pending}
-      className={`bg-surface border-border rounded-[--radius-card] border p-4 transition-opacity duration-fast ease-out md:p-6 ${
+      className={`bg-surface border-border rounded-card border p-4 transition-opacity duration-fast ease-out md:p-6 ${
         pending ? 'opacity-70' : ''
       }`}
     >

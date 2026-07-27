@@ -30,7 +30,7 @@ export function Gallery({ images, productTitle }: GalleryProps): React.ReactElem
       <div
         role="img"
         aria-label={`${productTitle} — no image available`}
-        className="bg-surface-raised flex items-center justify-center rounded-[--radius-card]"
+        className="bg-surface-raised flex items-center justify-center rounded-card"
         style={{ aspectRatio: '4 / 5' }}
       >
         <span className="text-fg-subtle text-sm">No image available</span>
@@ -72,7 +72,7 @@ export function Gallery({ images, productTitle }: GalleryProps): React.ReactElem
             aria-selected={index === activeIndex}
             aria-label={`Image ${index + 1} of ${images.length}`}
             onClick={() => setActiveImageId(image.id)}
-            className={`border-border-strong relative size-16 shrink-0 overflow-hidden rounded-[--radius-control] border transition-colors duration-fast ease-out md:size-20 ${
+            className={`border-border-strong relative size-16 shrink-0 overflow-hidden rounded-control border transition-colors duration-fast ease-out md:size-20 ${
               index === activeIndex ? 'ring-accent ring-2' : ''
             }`}
           >
@@ -82,7 +82,7 @@ export function Gallery({ images, productTitle }: GalleryProps): React.ReactElem
       </div>
 
       <div
-        className="bg-surface-raised relative flex-1 overflow-hidden rounded-[--radius-card]"
+        className="bg-surface-raised relative flex-1 overflow-hidden rounded-card"
         style={{ aspectRatio: '4 / 5' }}
       >
         {active ? (

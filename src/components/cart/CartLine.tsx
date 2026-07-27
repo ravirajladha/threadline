@@ -88,7 +88,7 @@ export function CartLine({
       aria-busy={pending}
     >
       <div
-        className="bg-surface-raised relative w-20 shrink-0 overflow-hidden rounded-[--radius-card] sm:w-24"
+        className="bg-surface-raised relative w-20 shrink-0 overflow-hidden rounded-card sm:w-24"
         style={{ aspectRatio: '4 / 5' }}
       >
         {line.image ? (
@@ -138,7 +138,7 @@ export function CartLine({
               onClick={() => onRemove(line.variantId)}
               disabled={pending}
               aria-label={`Remove ${line.productTitle} from your bag`}
-              className="text-fg-subtle hover:text-fg hover:bg-surface-raised shrink-0 rounded-[--radius-control] p-1.5 transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-40"
+              className="text-fg-subtle hover:text-fg hover:bg-surface-raised shrink-0 rounded-control p-1.5 transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-40"
             >
               <CloseIcon className="size-4" />
             </button>
@@ -156,7 +156,7 @@ export function CartLine({
             </p>
           ) : (
             <div
-              className={`border-border-strong inline-flex items-center rounded-[--radius-control] border ${
+              className={`border-border-strong inline-flex items-center rounded-control border ${
                 isBlocked ? 'border-danger' : ''
               }`}
             >

@@ -36,7 +36,7 @@ export function CouponBox({
 
   if (couponCode !== null) {
     return (
-      <div className="border-border bg-surface-raised flex items-center justify-between gap-4 rounded-[--radius-control] border p-3">
+      <div className="border-border bg-surface-raised flex items-center justify-between gap-4 rounded-control border p-3">
         <p className="text-fg text-sm">
           <span className="font-medium">{couponCode}</span>
           <span className="text-fg-muted"> applied</span>
@@ -78,12 +78,12 @@ export function CouponBox({
           disabled={pending}
           aria-invalid={rejection !== null}
           aria-describedby={rejection !== null ? `${inputId}-error` : undefined}
-          className="border-border bg-surface text-fg placeholder:text-fg-subtle min-w-0 flex-1 rounded-[--radius-control] border px-3 py-2 text-sm uppercase disabled:opacity-60"
+          className="border-border bg-surface text-fg placeholder:text-fg-subtle min-w-0 flex-1 rounded-control border px-3 py-2 text-sm uppercase disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={pending || code.trim().length === 0}
-          className="border-border-strong text-fg hover:bg-surface-raised shrink-0 rounded-[--radius-control] border px-4 py-2 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-50"
+          className="border-border-strong text-fg hover:bg-surface-raised shrink-0 rounded-control border px-4 py-2 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending ? 'Checking…' : 'Apply'}
         </button>

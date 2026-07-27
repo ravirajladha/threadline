@@ -15,7 +15,7 @@ export function Skeleton({ className = '', style }: SkeletonProps): React.ReactE
     <div
       aria-hidden="true"
       style={style}
-      className={`bg-surface-raised animate-pulse rounded-[--radius-control] ${className}`}
+      className={`bg-surface-raised animate-pulse rounded-control ${className}`}
     />
   )
 }

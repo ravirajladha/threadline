@@ -53,7 +53,7 @@ export default async function HomePage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href="/shop"
-              className="bg-accent text-accent-fg hover:bg-accent-hover rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+              className="bg-accent text-accent-fg hover:bg-accent-hover rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
             >
               Shop the collection
             </Link>
@@ -69,7 +69,7 @@ export default async function HomePage() {
               <li key={category.id}>
                 <Link
                   href={`/c/${category.slug}`}
-                  className="border-border hover:border-accent group flex items-center justify-between rounded-[--radius-surface] border p-5 transition-colors duration-fast ease-out"
+                  className="border-border hover:border-accent group flex items-center justify-between rounded-card border p-5 transition-colors duration-fast ease-out"
                 >
                   <span className="text-fg text-base font-medium">{category.title}</span>
                   <span

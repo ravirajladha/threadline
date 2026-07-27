@@ -116,7 +116,7 @@ function PriceSection({
             aria-labelledby={minId}
             value={minValue}
             onChange={(event) => setMinValue(event.target.value)}
-            className="border-border bg-surface text-fg w-full rounded-[--radius-control] border px-2 py-1.5 text-sm"
+            className="border-border bg-surface text-fg w-full rounded-control border px-2 py-1.5 text-sm"
           />
         </label>
         <label className="flex flex-1 flex-col gap-2">
@@ -130,12 +130,12 @@ function PriceSection({
             aria-labelledby={maxId}
             value={maxValue}
             onChange={(event) => setMaxValue(event.target.value)}
-            className="border-border bg-surface text-fg w-full rounded-[--radius-control] border px-2 py-1.5 text-sm"
+            className="border-border bg-surface text-fg w-full rounded-control border px-2 py-1.5 text-sm"
           />
         </label>
         <button
           type="submit"
-          className="border-border-strong text-fg hover:bg-surface-raised rounded-[--radius-control] border px-3 py-1.5 text-sm transition-colors duration-fast ease-out"
+          className="border-border-strong text-fg hover:bg-surface-raised rounded-control border px-3 py-1.5 text-sm transition-colors duration-fast ease-out"
         >
           Go
         </button>
@@ -217,7 +217,7 @@ export function FilterRail({ facets, filters, basePath }: FilterRailProps): Reac
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          className="border-border-strong text-fg inline-flex items-center gap-2 rounded-[--radius-control] border px-4 py-2 text-sm font-medium"
+          className="border-border-strong text-fg inline-flex items-center gap-2 rounded-control border px-4 py-2 text-sm font-medium"
         >
           <FilterIcon className="size-4" />
           Filters
@@ -227,7 +227,7 @@ export function FilterRail({ facets, filters, basePath }: FilterRailProps): Reac
           open={sheetOpen}
           onClose={() => setSheetOpen(false)}
           title="Filters"
-          className="m-0 mt-auto w-full max-w-none rounded-t-[--radius-card] rounded-b-none"
+          className="m-0 mt-auto w-full max-w-none rounded-t-card rounded-b-none"
         >
           <RailContents
             facets={facets}

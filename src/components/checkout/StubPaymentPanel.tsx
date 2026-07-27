@@ -69,8 +69,8 @@ export function StubPaymentPanel({
   }
 
   return (
-    <div className="border-border mx-auto max-w-md rounded-[--radius-surface] border p-6">
-      <p className="text-warning border-warning/40 bg-warning/10 mb-6 rounded-[--radius-control] border px-3 py-2 text-xs font-medium">
+    <div className="border-border mx-auto max-w-md rounded-card border p-6">
+      <p className="text-warning border-warning/40 bg-warning/10 mb-6 rounded-control border px-3 py-2 text-xs font-medium">
         Development payment simulator — no money moves.
       </p>
 
@@ -94,7 +94,7 @@ export function StubPaymentPanel({
           onClick={() => {
             void simulate('pay')
           }}
-          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
+          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-control px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending === 'pay' ? 'Processing…' : 'Simulate successful payment'}
         </button>
@@ -105,7 +105,7 @@ export function StubPaymentPanel({
           onClick={() => {
             void simulate('fail')
           }}
-          className="border-border-strong text-fg-muted hover:text-fg rounded-[--radius-control] border px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
+          className="border-border-strong text-fg-muted hover:text-fg rounded-control border px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending === 'fail' ? 'Processing…' : 'Simulate failed payment'}
         </button>

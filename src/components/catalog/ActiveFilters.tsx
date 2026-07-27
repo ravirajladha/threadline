@@ -75,7 +75,7 @@ export function ActiveFilters({ filters, facets, basePath }: ActiveFiltersProps)
           key={chip.key}
           type="button"
           onClick={() => removeChip(chip)}
-          className="bg-surface-raised text-fg hover:bg-border inline-flex items-center gap-2 rounded-[--radius-control] py-1.5 pr-2 pl-3 text-sm transition-colors duration-fast ease-out"
+          className="bg-surface-raised text-fg hover:bg-border inline-flex items-center gap-2 rounded-control py-1.5 pr-2 pl-3 text-sm transition-colors duration-fast ease-out"
         >
           {chip.label}
           <CloseIcon className="size-3.5" />

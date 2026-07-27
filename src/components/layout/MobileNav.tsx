@@ -28,7 +28,7 @@ export function MobileNav({ categories }: MobileNavProps): React.ReactElement {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open menu"
-        className="text-fg hover:bg-surface-raised rounded-[--radius-control] p-2 transition-colors duration-fast ease-out"
+        className="text-fg hover:bg-surface-raised rounded-control p-2 transition-colors duration-fast ease-out"
       >
         <MenuIcon className="size-6" />
       </button>
@@ -46,7 +46,7 @@ export function MobileNav({ categories }: MobileNavProps): React.ReactElement {
               <Link
                 href="/shop"
                 onClick={() => setOpen(false)}
-                className="text-fg hover:bg-surface-raised block rounded-[--radius-control] px-3 py-2.5 text-base font-medium transition-colors duration-fast ease-out"
+                className="text-fg hover:bg-surface-raised block rounded-control px-3 py-2.5 text-base font-medium transition-colors duration-fast ease-out"
               >
                 Shop all
               </Link>
@@ -56,7 +56,7 @@ export function MobileNav({ categories }: MobileNavProps): React.ReactElement {
                 <Link
                   href={`/c/${category.slug}`}
                   onClick={() => setOpen(false)}
-                  className="text-fg hover:bg-surface-raised block rounded-[--radius-control] px-3 py-2.5 text-base transition-colors duration-fast ease-out"
+                  className="text-fg hover:bg-surface-raised block rounded-control px-3 py-2.5 text-base transition-colors duration-fast ease-out"
                 >
                   {category.title}
                 </Link>
