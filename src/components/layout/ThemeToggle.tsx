@@ -6,8 +6,10 @@ import { useSyncExternalStore } from 'react'
 import { MoonIcon, SunIcon } from '../ui/icons'
 
 const STORAGE_KEY = 'theme'
-const PREFERS_DARK = '(prefers-color-scheme: dark)'
 type StoredTheme = 'light' | 'dark'
+
+/** Matches the `:root` block in `tokens.css`. The storefront opens light regardless of the OS. */
+const DEFAULT_THEME: StoredTheme = 'light'
 
 function isStoredTheme(value: string | null): value is StoredTheme {
   return value === 'light' || value === 'dark'
@@ -37,12 +39,17 @@ export function ThemeScript(): React.ReactElement {
 function readActiveTheme(): StoredTheme {
   const explicit = document.documentElement.getAttribute('data-theme')
   if (isStoredTheme(explicit)) return explicit
-  return window.matchMedia(PREFERS_DARK).matches ? 'dark' : 'light'
+
+  // No stored choice means light, because `tokens.css` no longer carries a
+  // `prefers-color-scheme` block — the OS does not select the theme. Reading `matchMedia` here
+  // instead would make the icon disagree with the page it sits on for every visitor running a
+  // dark desktop, and their first click would appear to do nothing.
+  return DEFAULT_THEME
 }
 
-/** The server has no DOM and no OS preference to read, so it renders the default. */
+/** The server has no DOM to read, and renders the same default the client resolves to. */
 function readServerTheme(): StoredTheme {
-  return 'light'
+  return DEFAULT_THEME
 }
 
 const listeners = new Set<() => void>()
@@ -52,22 +59,23 @@ function emitThemeChange(): void {
   for (const listener of listeners) listener()
 }
 
+/**
+ * `storage` is the only external source left. It fires when *another tab* changes the choice,
+ * which is what keeps two open tabs of the shop agreed on the theme. There is no longer a
+ * `matchMedia` subscription: the OS preference does not select the theme, so an OS switch is not
+ * a change this component needs to observe.
+ */
 function subscribeToTheme(listener: () => void): () => void {
   listeners.add(listener)
-  const media = window.matchMedia(PREFERS_DARK)
-  // The OS preference matters only while no explicit choice is stored, but subscribing
-  // unconditionally is what makes the icon follow a system switch in that state.
-  media.addEventListener('change', emitThemeChange)
   window.addEventListener('storage', emitThemeChange)
 
   return () => {
     listeners.delete(listener)
-    media.removeEventListener('change', emitThemeChange)
     window.removeEventListener('storage', emitThemeChange)
   }
 }
 
-/** A light/dark toggle. With no explicit choice yet, it follows the OS until the user picks. */
+/** A light/dark toggle. Light until the visitor chooses otherwise; the choice then persists. */
 export function ThemeToggle(): React.ReactElement {
   const theme = useSyncExternalStore(subscribeToTheme, readActiveTheme, readServerTheme)
 

@@ -6,6 +6,20 @@
  */
 
 :root {
+  /*
+   * Light is the storefront's default and does not follow the OS.
+   *
+   * Deliberate: a shop is a branded surface, not a document viewer. Roughly half of visitors
+   * run their phone in dark mode and would otherwise meet a near-black page carrying garment
+   * photography that was shot, retouched and colour-matched against white — the product looks
+   * wrong before anything else has a chance to. Dark remains a first-class choice, reached
+   * through the header toggle, which then wins over this via [data-theme].
+   *
+   * `color-scheme` is declared so form controls, scrollbars and the like are rendered light by
+   * the browser too, rather than staying dark and clashing with the page around them.
+   */
+  color-scheme: light;
+
   /* --- Brand ------------------------------------------------------------- */
   /* Mulberry orchid — a pink that leans plum rather than candy. */
   --brand-accent: #b04b76;
@@ -46,32 +60,13 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Dark theme — follows the OS by default. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --brand-accent: #e58ab0;
-    --brand-accent-hover: #f0a3c2;
-    --brand-accent-fg: #2a0f1c;
-    --brand-accent-subtle: #2e1a23;
-
-    --bg: #121011;
-    --surface: #1a1718;
-    --surface-raised: #232021;
-    --border: #322d2f;
-    --border-strong: #494243;
-
-    --fg: #f5f2f3;
-    --fg-muted: #a89ea2;
-    --fg-subtle: #7d7378;
-
-    --success: #4caf7d;
-    --warning: #d9a441;
-    --danger: #e05c52;
-    --info: #5b9bd8;
-  }
-}
-
-/* Explicit theme choice always wins over the OS preference. */
+/*
+ * The visitor's explicit choice — the only thing that turns the theme dark.
+ *
+ * There is deliberately no `@media (prefers-color-scheme: dark)` block here. See the note on
+ * `:root`. Re-adding one would silently reinstate OS-following for every visitor who has never
+ * touched the toggle, which is precisely the behaviour being removed.
+ */
 :root[data-theme='light'] {
   color-scheme: light;
 
