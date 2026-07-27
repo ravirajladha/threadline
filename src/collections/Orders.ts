@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { denyAll, ownScopedRead, staffWrite } from '@/access'
+import { bookShipmentEndpoint, fulfilOrderEndpoint } from '@/endpoints/fulfilment'
 import { addressSnapshotGroup, moneyField, serverOwned } from './fields'
 import { ORDER_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES } from '@/types'
 
@@ -30,7 +31,17 @@ export const Orders: CollectionConfig = {
     defaultColumns: ['orderNumber', 'status', 'paymentStatus', 'grandTotal', 'placedAt'],
     group: 'Commerce',
   },
+  endpoints: [fulfilOrderEndpoint, bookShipmentEndpoint],
   fields: [
+    {
+      name: 'fulfilmentActions',
+      type: 'ui',
+      admin: {
+        components: { Field: '@/components/admin/FulfilmentActions#FulfilmentActions' },
+        // Nothing to fulfil until the order exists.
+        condition: (data) => Boolean(data?.id),
+      },
+    },
     {
       name: 'orderNumber',
       type: 'text',

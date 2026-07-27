@@ -39,18 +39,19 @@ const SUPPORT_AGENT = staff('support_agent')
 
 function fakeShipping(result: unknown = { ok: true, awbCode: 'AWB1', courier: 'stub', alreadyBooked: false }) {
   const bookShipment = vi.fn().mockResolvedValue(result)
+  const port = { bookShipment, applyTrackingEvent: vi.fn() } as unknown as PayloadShipping
+  // Counted, because the whole point of the thunk is that a fulfilment action never resolves a
+  // courier — the factory throws when production has none configured.
+  const resolve = vi.fn(() => port)
 
-  return {
-    shipping: { bookShipment, applyTrackingEvent: vi.fn() } as unknown as PayloadShipping,
-    bookShipment,
-  }
+  return { shipping: resolve, bookShipment, resolve }
 }
 
 function fulfilmentFor(order: FakeOrderRow = ORDER) {
   const { state, payload } = createFakePayload(order)
-  const { shipping, bookShipment } = fakeShipping()
+  const { shipping, bookShipment, resolve } = fakeShipping()
 
-  return { state, bookShipment, fulfilment: createPayloadFulfilment({ payload, shipping }) }
+  return { state, bookShipment, resolve, fulfilment: createPayloadFulfilment({ payload, shipping }) }
 }
 
 describe('perform — permission', () => {
@@ -238,6 +239,16 @@ describe('bookShipment', () => {
 
     expect(outcome).toMatchObject({ ok: true, awbCode: 'AWB1' })
     expect(bookShipment).toHaveBeenCalledWith(42)
+  })
+
+  it('does not resolve a courier to pack an order', async () => {
+    // Packing involves no courier. Resolving one anyway would make a fulfilment action fail in
+    // production for want of a shipping provider that was never needed.
+    const { fulfilment, resolve } = fulfilmentFor()
+
+    await fulfilment.perform({ orderId: 42, action: 'pack', user: ORDER_MANAGER })
+
+    expect(resolve).not.toHaveBeenCalled()
   })
 
   it('never reaches the courier for a caller without permission', async () => {

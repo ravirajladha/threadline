@@ -76,8 +76,14 @@ export type BookShipmentOutcome = BookShipmentResult | { ok: false; reason: 'for
 
 export interface PayloadFulfilmentOptions {
   payload: Payload
-  /** Injected rather than constructed, so a test supplies a double and no HTTP call is made. */
-  shipping: PayloadShipping
+  /**
+   * Injected rather than constructed, so a test supplies a double and no HTTP call is made — and
+   * injected as a **function**, because building one asks the factory for a courier and the factory
+   * throws when production has no real provider configured. Packing an order does not involve a
+   * courier, so it must not fail for want of one; the provider is resolved only when a parcel is
+   * actually being booked.
+   */
+  shipping: () => PayloadShipping
 }
 
 export function createPayloadFulfilment(options: PayloadFulfilmentOptions) {
@@ -191,7 +197,7 @@ export function createPayloadFulfilment(options: PayloadFulfilmentOptions) {
 
       if (!denyUnlessFulfiller(user, 'book')) return { ok: false, reason: 'forbidden' }
 
-      return shipping.bookShipment(orderId)
+      return shipping().bookShipment(orderId)
     },
   }
 }

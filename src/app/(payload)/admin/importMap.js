@@ -23,6 +23,7 @@ import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { VariantGenerator as VariantGenerator_483da82ba2617beac13ec0cda7abe23f } from '@/components/admin/VariantGenerator'
 import { StockAdjuster as StockAdjuster_7ef17a5c3c7c6e4baa115f17b9abbb8e } from '@/components/admin/StockAdjuster'
+import { FulfilmentActions as FulfilmentActions_a848bc9fd7f70bcdfb56f5cc14d97c3e } from '@/components/admin/FulfilmentActions'
 import { DashboardCounters as DashboardCounters_d01a4aad1e3ce42aecfda91d4f76b937 } from '@/components/admin/DashboardCounters'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
@@ -53,6 +54,7 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient": ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@/components/admin/VariantGenerator#VariantGenerator": VariantGenerator_483da82ba2617beac13ec0cda7abe23f,
   "@/components/admin/StockAdjuster#StockAdjuster": StockAdjuster_7ef17a5c3c7c6e4baa115f17b9abbb8e,
+  "@/components/admin/FulfilmentActions#FulfilmentActions": FulfilmentActions_a848bc9fd7f70bcdfb56f5cc14d97c3e,
   "@/components/admin/DashboardCounters#DashboardCounters": DashboardCounters_d01a4aad1e3ce42aecfda91d4f76b937,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }
