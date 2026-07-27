@@ -799,3 +799,9 @@ Every one keeps its stub, which is what the test suite and local development con
   note that `processedEventIdsFrom` in `paymentApply.ts` matches on `evt_`/`stub_evt_` prefixes and
   will **not** match a `stub_trk_` tracking id, so that helper needs a parameter rather than a
   second copy. Then `orders/payloadFulfilment.ts`, then the three routes.
+- 2026-07-27 [CI]: **The billing lock is cleared and CI is green.** Owner added a payment method;
+  run 30275575121 completed in 1m9s with `conclusion: success`, every step executed on a hosted
+  runner, including `Typecheck, lint and test`. So the 1176 unit tests are now verified off this
+  machine as well as on it. Supersedes the note in the J4 entry above telling the next session to go
+  and clear it — nothing to do. Worth remembering the tell rather than the incident: a CI failure at
+  3s with `"steps": []` never ran, so read the check-run annotations API, not the (nonexistent) log.
