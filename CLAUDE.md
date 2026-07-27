@@ -411,10 +411,65 @@ Routes: `/` · `/shop` · `/c/[slug]` (category) · `/p/[slug]` (product).
 each page carries metadata plus valid structured data.
 
 ### [ ] J4 — Cart & checkout *(stubbed payment)*
-DB-backed cart keyed to a session cookie, guest → customer merge on login, address book,
-shipping rules, GST, coupons. `PaymentGateway` interface with a **`StubGateway`** that always
-succeeds and emits a real-shaped webhook — signature verification, idempotency by event id and
-stock reservation are all built for real against it. Confirmation page.
+**Goal:** a customer can buy. Cart lives in the database against a session cookie, survives login,
+re-prices itself server-side, reserves stock before payment and becomes an order whose totals
+reconcile to the paise. Payment is a `StubGateway` — but the signature check, the idempotency and
+the status machine around it are real.
+
+Routes: `/cart` · `/checkout` · `/checkout/success`. API: cart mutations · `/api/webhooks/payments`.
+
+**Pricing — `src/lib/pricing/`** (pure, the heaviest tested layer in the project)
+- [ ] `tax.ts` — `taxJurisdiction(sellerState, shippingState)` then the split: CGST+SGST within
+      the state, IGST across it, **never both**. The halves are floor + remainder, not two
+      roundings, so cgst + sgst equals the tax exactly
+- [ ] `shipping.ts` — free at or above the threshold, flat rate below, COD fee, and a
+      `free_shipping` coupon that zeroes it. Every number comes from `settings`, none from code
+- [ ] `coupon.ts` — one evaluator returning either a discount or a **typed reason** it was
+      refused: inactive · not started · expired · min cart · total limit · per-user limit · no
+      eligible items. Scoped coupons discount only the lines they apply to
+- [ ] `loyalty.ts` — earn per rupee, 1 point = ₹1, capped at a percentage of the cart, a minimum
+      to redeem at all, and never more than the balance
+- [ ] `totals.ts` — the composer. Asserts its own invariant: subtotal + shipping + tax − discount
+      − loyalty = grandTotal, to the paise, or it throws rather than writing a wrong order
+
+**Cart — `src/lib/cart/`**
+- [ ] `types.ts` — `CartView` / `CartLineView` / `CartPort`, plain serialisable data
+- [ ] `lines.ts` — add · update · remove over an item list, merging a repeat variant instead of
+      duplicating it, clamped to what is actually available
+- [ ] `merge.ts` — guest cart ∪ customer cart on login. Quantities sum, then clamp
+- [ ] `cartView.ts` — re-prices every line from the variant (A04) and flags a price that moved
+      since it was added, rather than silently charging the new one
+- [ ] `session.ts` — opaque session id, cookie name and options in one place
+- [ ] `payloadCart.ts` — the port. All mutations go through it; the collection stays `create: denyAll`
+
+**Stock reservation — `src/lib/inventory/`**
+- [ ] `reservation.ts` — pure plan: lines + stock → reservations, or the shortages that block them
+- [ ] `payloadReservation.ts` — applies the plan inside a transaction, re-reading availability
+      *within* it, so the last unit cannot be sold twice under concurrent checkout
+
+**Orders — `src/lib/orders/`**
+- [ ] `transitions.ts` — the status machine. Every illegal transition throws; terminal states are
+      terminal. Payment status has its own smaller machine
+- [ ] `orderNumber.ts` — deterministic, human-quotable, no PII
+- [ ] `draft.ts` — priced cart + addresses → the order row and its fully snapshotted items
+- [ ] `payloadOrders.ts` — place, transition (writing an `orderEvents` row every time), and the
+      idempotency check that makes a replayed webhook a no-op
+
+**Payments — `src/lib/payments/`**
+- [ ] `types.ts` — `PaymentGateway`, `PaymentIntent`, `PaymentEvent`
+- [ ] `signature.ts` — HMAC-SHA256, compared in constant time
+- [ ] `stubGateway.ts` — always succeeds, fabricates ids, and **signs its webhook for real**
+- [ ] `factory.ts` — selects by environment and throws at startup if production has no real gateway
+
+**Surfaces**
+- [ ] Cart mutation endpoints, rate-limited, each re-checking ownership of the session cart
+- [ ] `/api/webhooks/payments` — verify signature → parse → idempotent apply. Unverified is a 400
+      and nothing else
+- [ ] Components: `cart/` CartLine · CartSummary · CartView · `checkout/` AddressForm ·
+      OrderSummary · CouponBox · PaymentStep, and the three routes
+- [ ] OWASP pass: A01 a cart and an order are readable only by their owner or staff, A04 server
+      re-prices and reserves, A08 signature + idempotency by event id, A09 every payment event logged
+- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §9 written
 
 ### [ ] J5 — Orders & fulfilment + scheduler *(stubbed courier)*
 Order status machine, `ShippingProvider` interface with a **`StubShippingProvider`** that
