@@ -27,6 +27,14 @@ export interface ShippingInput {
   paymentMethod: PaymentMethod
   /** True when an applied coupon is of type `free_shipping`. */
   freeShippingCoupon: boolean
+  /**
+   * Units actually being shipped. Zero means nothing is: no carriage, no COD fee.
+   *
+   * Without this, an empty cart — or one whose every line sold out — is below the free-shipping
+   * threshold and therefore charged the flat rate, so the summary quotes postage on a parcel
+   * that does not exist. Defaults to 1 so a caller pricing a single amount is unaffected.
+   */
+  itemCount?: number
 }
 
 export interface ShippingCharge {
@@ -58,10 +66,20 @@ export function isCodAvailable(rules: ShippingRules): boolean {
  * "free shipping over ₹999" reading as "₹999.01" is the sort of thing customers write in about.
  */
 export function shippingFor(input: ShippingInput): ShippingCharge {
-  const { subtotal, rules, paymentMethod, freeShippingCoupon } = input
+  const { subtotal, rules, paymentMethod, freeShippingCoupon, itemCount = 1 } = input
 
   const threshold = Money.fromPaise(rules.freeShippingThresholdPaise)
   const flatRate = Money.fromPaise(rules.flatShippingRatePaise)
+
+  if (itemCount <= 0) {
+    return {
+      base: Money.zero(),
+      codFee: Money.zero(),
+      total: Money.zero(),
+      isFree: true,
+      amountToFreeShipping: null,
+    }
+  }
 
   const meetsThreshold = subtotal.greaterThanOrEqual(threshold)
   const isFree = meetsThreshold || freeShippingCoupon

@@ -90,10 +90,24 @@ describe('shippingFor', () => {
     expect(result.codFee.isZero()).toBe(true)
   })
 
-  it('handles an empty cart without charging carriage on nothing', () => {
-    // Zero is below the threshold, so the flat rate applies. The cart page never shows this
-    // because an empty cart has no summary — but checkout must not be reachable with one.
-    expect(charge(0).total.toPaise()).toBe(7900)
+  it('charges nothing when there is nothing to ship', () => {
+    // A zero subtotal is below the threshold, so the naive answer is the flat rate — postage
+    // quoted on a parcel that does not exist. `itemCount` is what makes "nothing ships" a
+    // different case from "a cheap cart ships".
+    const result = charge(0, { itemCount: 0 })
+
+    expect(result.total.isZero()).toBe(true)
+    expect(result.isFree).toBe(true)
+    expect(result.amountToFreeShipping).toBeNull()
+  })
+
+  it('charges no COD fee when nothing ships', () => {
+    expect(charge(0, { itemCount: 0, paymentMethod: 'cod' }).codFee.isZero()).toBe(true)
+  })
+
+  it('assumes something is shipping when the caller does not say', () => {
+    // Keeps the simple call site — one amount in, carriage out — working unchanged.
+    expect(charge(50000).total.toPaise()).toBe(7900)
   })
 })
 

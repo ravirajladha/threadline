@@ -200,7 +200,14 @@ export function priceCart(input: PriceCartInput): CartPricing {
   const loyaltyDiscount = redemption.ok ? redemption.discount : Money.zero()
 
   // --- Shipping -----------------------------------------------------------
-  const carriage = shippingFor({ subtotal, rules: settings.shipping, paymentMethod, freeShippingCoupon })
+  const unitsShipping = priced.reduce((total, line) => total + line.qty, 0)
+  const carriage = shippingFor({
+    subtotal,
+    rules: settings.shipping,
+    paymentMethod,
+    freeShippingCoupon,
+    itemCount: unitsShipping,
+  })
 
   // --- Grand total --------------------------------------------------------
   // Built from the **line totals**, each of which already carries its own tax. This is the
