@@ -32,9 +32,23 @@ export default async function HomePage() {
   ])
 
   const newIn = listing.products.slice(0, NEW_IN_COUNT)
-  const topLevel = categories
-    .filter((category) => category.parentId === null)
-    .sort((a, b) => a.sortOrder - b.sortOrder)
+
+  /*
+   * The browse band shows **leaf** categories, not top-level ones.
+   *
+   * The header navigates the tree from its root, which is right for navigation. This band is a
+   * shortcut into the catalog, and the sections that hold garments are the leaves — "Shirts",
+   * "T-Shirts", "Chinos", not the "Men" that contains them. With the current catalog, filtering
+   * to roots renders exactly one card, which reads as a broken grid rather than a sparse one.
+   *
+   * Falling back to the whole list matters: a flat catalog with no nesting has no leaves by this
+   * definition, and an empty band would be worse than an unfiltered one.
+   */
+  const hasChildren = new Set(
+    categories.map((category) => category.parentId).filter((id): id is number => id !== null),
+  )
+  const leaves = categories.filter((category) => !hasChildren.has(category.id))
+  const browsable = (leaves.length > 0 ? leaves : categories).sort((a, b) => a.sortOrder - b.sortOrder)
 
   return (
     <>
@@ -61,11 +75,11 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {topLevel.length > 0 ? (
+      {browsable.length > 0 ? (
         <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
           <h2 className="text-fg mb-6 text-2xl font-medium tracking-tight">Browse</h2>
           <ul role="list" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {topLevel.map((category) => (
+            {browsable.map((category) => (
               <li key={category.id}>
                 <Link
                   href={`/c/${category.slug}`}
