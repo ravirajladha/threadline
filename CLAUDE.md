@@ -3,7 +3,7 @@
 > Loaded automatically on every session start.
 > Work the **Journey** below top to bottom. One stage at a time. Mark `[x]` only when the
 > stage's tests pass. Update the Session Log at the end of every session.
-> Created: 2026-07-26 · Last updated: 2026-07-26
+> Created: 2026-07-26 · Last updated: 2026-07-27
 
 ---
 
@@ -410,7 +410,7 @@ Routes: `/` · `/shop` · `/c/[slug]` (category) · `/p/[slug]` (product).
 **Done:** every filter combination is a shareable URL, a sold-out size is visible and disabled, and
 each page carries metadata plus valid structured data.
 
-### [ ] J4 — Cart & checkout *(stubbed payment)*
+### [x] J4 — Cart & checkout *(stubbed payment)*
 **Goal:** a customer can buy. Cart lives in the database against a session cookie, survives login,
 re-prices itself server-side, reserves stock before payment and becomes an order whose totals
 reconcile to the paise. Payment is a `StubGateway` — but the signature check, the idempotency and
@@ -419,47 +419,50 @@ the status machine around it are real.
 Routes: `/cart` · `/checkout` · `/checkout/success`. API: cart mutations · `/api/webhooks/payments`.
 
 **Pricing — `src/lib/pricing/`** (pure, the heaviest tested layer in the project)
-- [ ] `tax.ts` — `taxJurisdiction(sellerState, shippingState)` then the split: CGST+SGST within
+- [x] `tax.ts` — `taxJurisdiction(sellerState, shippingState)` then the split: CGST+SGST within
       the state, IGST across it, **never both**. The halves are floor + remainder, not two
       roundings, so cgst + sgst equals the tax exactly
-- [ ] `shipping.ts` — free at or above the threshold, flat rate below, COD fee, and a
+- [x] `shipping.ts` — free at or above the threshold, flat rate below, COD fee, and a
       `free_shipping` coupon that zeroes it. Every number comes from `settings`, none from code
-- [ ] `coupon.ts` — one evaluator returning either a discount or a **typed reason** it was
+- [x] `coupon.ts` — one evaluator returning either a discount or a **typed reason** it was
       refused: inactive · not started · expired · min cart · total limit · per-user limit · no
       eligible items. Scoped coupons discount only the lines they apply to
-- [ ] `loyalty.ts` — earn per rupee, 1 point = ₹1, capped at a percentage of the cart, a minimum
+- [x] `loyalty.ts` — earn per rupee, 1 point = ₹1, capped at a percentage of the cart, a minimum
       to redeem at all, and never more than the balance
-- [ ] `totals.ts` — the composer. Asserts its own invariant: subtotal + shipping + tax − discount
+- [x] `totals.ts` — the composer. Asserts its own invariant: subtotal + shipping + tax − discount
       − loyalty = grandTotal, to the paise, or it throws rather than writing a wrong order
 
 **Cart — `src/lib/cart/`**
-- [ ] `types.ts` — `CartView` / `CartLineView` / `CartPort`, plain serialisable data
-- [ ] `lines.ts` — add · update · remove over an item list, merging a repeat variant instead of
+- [x] `types.ts` — `CartView` / `CartLineView` / `CartPort`, plain serialisable data
+- [x] `lines.ts` — add · update · remove over an item list, merging a repeat variant instead of
       duplicating it, clamped to what is actually available
-- [ ] `merge.ts` — guest cart ∪ customer cart on login. Quantities sum, then clamp
-- [ ] `cartView.ts` — re-prices every line from the variant (A04) and flags a price that moved
+- [x] `merge.ts` — guest cart ∪ customer cart on login. Quantities sum, then clamp
+- [x] `cartView.ts` — re-prices every line from the variant (A04) and flags a price that moved
       since it was added, rather than silently charging the new one
-- [ ] `session.ts` — opaque session id, cookie name and options in one place
-- [ ] `payloadCart.ts` — the port. All mutations go through it; the collection stays `create: denyAll`
+- [x] `session.ts` — opaque session id, cookie name and options in one place
+- [x] `payloadCart.ts` — the port. All mutations go through it; the collection stays `create: denyAll`
 
 **Stock reservation — `src/lib/inventory/`**
-- [ ] `reservation.ts` — pure plan: lines + stock → reservations, or the shortages that block them
-- [ ] `payloadReservation.ts` — applies the plan inside a transaction, re-reading availability
-      *within* it, so the last unit cannot be sold twice under concurrent checkout
+- [x] `reservation.ts` — pure plan: lines + stock → reservations, or the shortages that block them
+- [x] `payloadReservation.ts` — applies the plan inside a transaction. The guarantee is **one
+      conditional `UPDATE`**, not a re-read: check and take are the same statement, so zero rows
+      updated *is* the shortage and the last unit cannot be sold twice under concurrent checkout
 
 **Orders — `src/lib/orders/`**
-- [ ] `transitions.ts` — the status machine. Every illegal transition throws; terminal states are
+- [x] `transitions.ts` — the status machine. Every illegal transition throws; terminal states are
       terminal. Payment status has its own smaller machine
-- [ ] `orderNumber.ts` — deterministic, human-quotable, no PII
-- [ ] `draft.ts` — priced cart + addresses → the order row and its fully snapshotted items
-- [ ] `payloadOrders.ts` — place, transition (writing an `orderEvents` row every time), and the
-      idempotency check that makes a replayed webhook a no-op
+- [x] `orderNumber.ts` — deterministic, human-quotable, no PII
+- [x] `draft.ts` — priced cart + addresses → the order row and its fully snapshotted items
+- [x] `payloadOrders.ts` — place, transition (writing an `orderEvents` row every time), and the
+      idempotency check that makes a replayed webhook a no-op. Both `transition` and
+      `applyPaymentEvent` take `SELECT … FOR UPDATE` on the order row **before** reading the state
+      they decide on — the check-then-act is otherwise racy under READ COMMITTED
 
 **Payments — `src/lib/payments/`**
-- [ ] `types.ts` — `PaymentGateway`, `PaymentIntent`, `PaymentEvent`
-- [ ] `signature.ts` — HMAC-SHA256, compared in constant time
-- [ ] `stubGateway.ts` — always succeeds, fabricates ids, and **signs its webhook for real**
-- [ ] `factory.ts` — selects by environment and throws at startup if production has no real gateway
+- [x] `types.ts` — `PaymentGateway`, `PaymentIntent`, `PaymentEvent`
+- [x] `signature.ts` — HMAC-SHA256, compared in constant time
+- [x] `stubGateway.ts` — always succeeds, fabricates ids, and **signs its webhook for real**
+- [x] `factory.ts` — selects by environment and throws at startup if production has no real gateway
 
 **Surfaces**
 - [x] `src/lib/http/` — `rateLimit.ts` (sliding-window limiter, injected clock) and `route.ts`
@@ -479,10 +482,14 @@ Routes: `/cart` · `/checkout` · `/checkout/success`. API: cart mutations · `/
 - [x] Storefront chrome finally mounted — `Header` (live bag count) and `Footer` were built in J3
       but never rendered; `(storefront)/layout.tsx` now carries them plus `ThemeScript` and a skip
       link. Add-to-bag wired in `VariantPicker`; `/` replaced the J0 placeholder
-- [ ] OWASP pass: A01 a cart and an order are readable only by their owner or staff, A04 server
-      re-prices and reserves, A08 signature + idempotency by event id, A09 every payment event logged
-- [x] `npm run check` green — 1101 unit tests; `npm run build` green
-- [ ] `docs/ARCHITECTURE.md` §9 written
+- [x] OWASP pass: A01 a cart and an order are readable only by their owner or staff, A04 server
+      re-prices and reserves, A08 signature + idempotency by event id, A09 every payment event logged.
+      Verified against the code, not the comments — A01 traced down to the collection `access`
+      functions (Payload exposes REST/GraphQL for `carts` and `orders` whatever the routes do), A08
+      found and fixed a real race, A09 confirmed no PII in any log line. A07 gap raised in
+      `docs/FEATURES.md`: `x-forwarded-for` is client-settable, so the limiter is bypassable
+- [x] `npm run check` green — 1108 unit tests; `npm run build` green
+- [x] `docs/ARCHITECTURE.md` §9 written
 
 ### [ ] J5 — Orders & fulfilment + scheduler *(stubbed courier)*
 Order status machine, `ShippingProvider` interface with a **`StubShippingProvider`** that
@@ -659,3 +666,50 @@ Every one keeps its stub, which is what the test suite and local development con
   `docs/ARCHITECTURE.md` §9, then mark J4 `[x]`. Owner to run `npm run seed` (schema unchanged, so
   only if the catalog is stale) and `npm run test:e2e` — no e2e spec covers cart → checkout yet,
   so that suite still only proves J3.
+- 2026-07-27 [J4, closed]: **Stage complete.** `npm run check` green — typecheck, lint and 1108 unit
+  tests (up from 1101). `docs/ARCHITECTURE.md` §9 written, retitled "Cart, checkout and orders":
+  the stub section had been scoped as "Payments — Razorpay", which is a fraction of what J4 actually
+  delivered.
+  The OWASP pass was run against the code rather than against the comments, which is the only
+  version of it worth doing — every one of these four routes documents its own security properties
+  in a header block, and a header block is a claim, not evidence. Three of the four claims held.
+  **A08 did not, and the defect was real.** `applyPaymentEvent` read the processed-event trail,
+  decided, then wrote — a check-then-act sequence, and Postgres defaults to READ COMMITTED. Two
+  concurrent deliveries of the same event both read a trail without the event id *and* both read
+  `paymentStatus: 'pending'`, so neither the duplicate-event guard nor the already-paid guard fires.
+  The order is confirmed twice, two audit rows are written, and **the stock is sold twice**. Payment
+  providers retry as a matter of course, so this needed no attacker. The pure decision in
+  `paymentApply.ts` was correct throughout; what was wrong was the read feeding it.
+  Fixed with `SELECT … FOR UPDATE` on the order row taken *before* anything is read, in both
+  `applyPaymentEvent` and `transition` — the same shape of bug, and `transition` now opens a
+  transaction when it was not given one, because a lock outside a transaction is released at once
+  and guarantees nothing. `clientFor` and the driver-shape helpers moved out of
+  `payloadReservation.ts` into `lib/utils/drizzle.ts` on their second use, per §3.
+  On testing it honestly: a concurrency test that passes proves nothing until it has been seen to
+  fail, so the fake models the one Postgres behaviour the fix rests on — a row lock held until
+  commit — and serialises nothing by itself. Verified by neutralising the locks and re-running: the
+  race test reports `[ 'apply', 'apply' ]` and six of seven fail. Writes in the fake become visible
+  immediately rather than at commit, which is weaker than Postgres and deliberately so — it can only
+  flatter an unlocked implementation, never fake a failure.
+  Worth recording what the pass confirmed rather than changed, since these are the properties a
+  later refactor could quietly break: A01 holds at the **collection** layer, not just in the route
+  handlers — which matters because Payload exposes REST and GraphQL for `carts` and `orders`
+  regardless of what our own routes do, and `ownScopedRead` returns `false` for anonymous callers
+  and a `Where` owner constraint for customers. The stock guarantee is the conditional `UPDATE`, not
+  the re-read the journey line had claimed; that line is corrected. A09 logs carry event id, type,
+  order number and decision, and no PII.
+  **One gap left open deliberately, in `docs/FEATURES.md` under Needs Input.** `clientKey` identifies
+  a caller by the left-most `x-forwarded-for` entry, which the client sets — so a script rotating
+  that header gets a fresh allowance per request and the coupon-apply limit, whose entire purpose is
+  to stop code guessing, is bypassed. The fix is to count from the right past the proxies we control,
+  and that hop count is a fact about the deployment: too few leaves the bypass open, too many buckets
+  every visitor behind one edge node together and starts refusing real shoppers. Not a guess to make
+  unilaterally.
+  Also confirmed this session, from the owner's screenshots: **CI red is a billing lock, not code.**
+  The check-run annotations API says "The job was not started because your account is locked due to a
+  billing issue" and reports `"steps": []` — nothing ran, which is why all nine runs die at 3s.
+  Clear it at github.com/settings/billing; Railway deploys are unaffected.
+  **Next: J5 — orders & fulfilment + scheduler**, against a `StubShippingProvider`. Owner to run
+  `npm run test:e2e` (still only proves J3 — no spec covers cart → checkout yet, and that gap is now
+  the largest untested surface) and `npm run build`. `npm run seed` only if the catalog is stale;
+  the schema did not change this session, so no migration was generated.

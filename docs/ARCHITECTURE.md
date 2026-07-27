@@ -258,9 +258,94 @@ colour change stops matching and resets on its own; the variant picker keeps the
 explicit size and resolves the effective one against the current pill set. Effects that copy
 props into state are the standard source of the cascading second render, and none survive here.
 
-## 9. Payments — Razorpay
+## 9. Cart, checkout and orders
 
-_pending (J4 stub, J11 live)_
+Built at J4. Routes `/cart`, `/checkout`, `/checkout/pay`, `/checkout/success`, `/checkout/failed`
+over four API handlers — `/api/cart`, `/api/checkout`, `/api/webhooks/payments` and the
+development-only `/api/payments/simulate`. Payment is a `StubGateway`; the signature verification,
+the idempotency and the order status machine around it are real (CLAUDE.md §2).
+
+**The server is the only authority on money.** `src/lib/pricing/` is pure and takes no dependency on
+Payload. `totals.ts` composes subtotal, shipping, tax, discount and loyalty and then **asserts its
+own invariant** — the parts must sum to the grand total to the paise, or it throws
+`TotalsMismatchError` and no order is written. A failed checkout is recoverable; an order charged
+against totals that do not reconcile is found weeks later by whoever is doing the books.
+
+**GST is split floor + remainder, never two roundings.** Halving the tax and rounding each half
+independently produces a pair that does not add up to the whole. So `tax.ts` computes one half by
+`Math.floor` and takes the other as the remainder, making `cgst + sgst === tax` true by
+construction. Jurisdiction is decided first — CGST+SGST within the state, IGST across it, **never
+both** — and the split is computed on the delivery address the customer actually entered, which is
+why `/api/checkout` re-prices rather than trusting the figures the checkout page was showing.
+
+**A refused coupon returns a reason, not a boolean.** `coupon.ts` answers with either a discount or
+one of a typed set of rejections — inactive, not started, expired, min cart, total limit, per-user
+limit, no eligible items. The cart renders it as something the customer can act on ("spend ₹400
+more"), which a `false` cannot express. Nothing about a coupon is decided in a component.
+
+**The cart lives in the database, keyed by an opaque session cookie.** No id in any request body
+names a cart, so asking for somebody else's is not expressible rather than merely refused
+(OWASP A01). `cartView.ts` **re-prices every line from its variant on every read** and flags a
+price that moved since it was added rather than silently charging the new one; `priceAtAdd` is kept
+to explain a difference, never to total with. Reading does not mint a session — a crawler would
+otherwise leave a `carts` row per page view — but a mutation may, because that is what "add to bag"
+means for a first-time visitor.
+
+**Stock is held before payment, in one statement.** `reservation.ts` is the pure plan — lines plus
+availability in, reservations or the shortages that block them out. `payloadReservation.ts` applies
+it, and this is where the oversell guarantee actually lives:
+
+```sql
+UPDATE variants SET reserved_qty = reserved_qty + $qty
+ WHERE id = $id AND stock_qty - reserved_qty >= $qty
+```
+
+Check and take are the same statement, so **zero rows updated is the shortage** — there is no
+separate read to fall out of step with the write. `placeOrder` holds stock *before* the order row
+exists, so a shortage leaves nothing to undo and the customer keeps their cart.
+
+**Only a signature-verified webhook may mark an order paid.** `/api/checkout` creates a prepaid
+order `pending` and never settles it; the browser is never believed about payment. The webhook
+verifies the **raw body bytes** before parsing — `JSON.parse` → `JSON.stringify` does not reproduce
+what was signed — compares digests in constant time, and answers every rejection with the same
+"invalid", because distinguishing a bad signature from an unknown order is free reconnaissance.
+
+**Idempotency by event id, ordered by a row lock.** Providers retry, so the same capture arriving
+twice is ordinary traffic. Processed event ids are recovered from the append-only `orderEvents`
+trail rather than a second table that could disagree with it. That check is only sound if the two
+deliveries are ordered: under Postgres's default READ COMMITTED, two concurrent applies would both
+read a trail without the event id and both read `paymentStatus: 'pending'`, so neither the
+duplicate-event guard nor the already-paid guard would fire — confirming the order twice and
+selling the stock twice. `applyPaymentEvent` and `transition` therefore take
+`SELECT … FOR UPDATE` on the order row **before reading anything**, and `transition` opens a
+transaction when it was not given one, since a lock outside a transaction is released at once.
+
+**An order number never authorises reading an order.** It is a date plus a small sequence, so a page
+that trusted `?order=` would hand out strangers' addresses to anyone counting upwards. The
+confirmation pages read an httpOnly `tl_order` cookie and never the URL. `SameSite=Lax`
+deliberately: `Strict` is withheld on the cross-site return from a payment gateway, so the
+confirmation page would come up blank for exactly the customers who paid.
+
+**Raw SQL exists in two places and both are about concurrency** — the conditional stock update
+above, and the order row lock. Both go through `lib/utils/drizzle.ts`, which resolves the client for
+the *open transaction* (Payload keeps one session per transaction id; the pooled client would run
+outside it and release a lock immediately). Every value crosses as a bound parameter; a test asserts
+the order number appears in the lock statement's parameters and **not** in its text (OWASP A03).
+
+**Stubs cannot reach production.** `payments/factory.ts` selects by environment and throws at
+startup if production has no real gateway configured. `/api/payments/simulate` additionally refuses
+unless the gateway really is a `StubGateway`, and answers 404 rather than 403 — a route that admits
+to existing tells an attacker what to look for. It does **not** call `applyPaymentEvent`: it signs a
+body for real and hands it to the webhook route, so the local happy path runs *over* verification
+instead of around it, and J11 changes only who makes the request.
+
+**Rate limiting is a sliding window**, not a fixed one: a fixed window lets a caller spend one
+allowance at 0:59 and the next at 1:01, double the intended rate across exactly the boundary a
+script will find. The clock is injected, so that case is a test rather than a sleep. Coupon apply
+gets the tightest allowance, since an unlimited one is an oracle for guessing codes. Known
+limitation: the caller is identified from `x-forwarded-for`, which a client can set, so the limiter
+is a throttle rather than an access control — closing that needs a trusted-proxy hop count for the
+deployment and is tracked in `docs/FEATURES.md`.
 
 ## 10. Shipping — Shiprocket
 
