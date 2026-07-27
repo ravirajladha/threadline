@@ -1,8 +1,9 @@
 /**
  * The Payload-backed `ReservationStore`.
  *
- * This is where the oversell guarantee actually lives, and it is the one place in the project that
- * drops below the Local API to raw SQL. That is a deliberate exception, so it is worth stating why.
+ * This is where the oversell guarantee actually lives, and one of only two places in the project
+ * that drop below the Local API to raw SQL. That is a deliberate exception, so it is worth stating
+ * why.
  *
  * A reservation has to answer "is there enough?" and "take it" as a **single indivisible step**.
  * Read-then-write through the Local API cannot: between the `find` and the `update`, another
@@ -23,85 +24,17 @@
  * On SQL injection (OWASP A03): every value crosses as a bound parameter through drizzle's `sql`
  * template. Nothing here is built by string concatenation, and the only interpolations are the
  * quantities and ids, which arrive as parameters.
+ *
+ * The client lookup and the driver-shape helpers live in `lib/utils/drizzle.ts`, shared with the
+ * order row locking that closes the same class of window around payment events.
  */
 import { sql } from 'drizzle-orm'
 import type { Payload, PayloadRequest } from 'payload'
 
+import { drizzleClientFor, rowsAffected, rowsOf, toCount } from '@/lib/utils/drizzle'
 import { numericId, optionalNumericId } from '@/lib/utils/ids'
 import type { ReservationStore } from './reservationStore'
 import type { VariantAvailability } from './reservation'
-
-/**
- * The transactional drizzle client for an open Payload transaction.
- *
- * Payload keeps one session per transaction id; using the wrong client would run these statements
- * on a *different* connection, outside the transaction, where they would neither see the caller's
- * uncommitted work nor be rolled back with it. Falling back to the pooled client when there is no
- * transaction is correct — a single atomic statement needs no transaction to be atomic.
- */
-interface DrizzleLike {
-  execute(query: unknown): Promise<unknown>
-}
-
-interface DrizzleAdapterLike {
-  drizzle: DrizzleLike
-  sessions: Record<string, { db: DrizzleLike } | undefined>
-}
-
-function clientFor(payload: Payload, transactionID: string | number | null): DrizzleLike {
-  const adapter = payload.db as unknown as DrizzleAdapterLike
-
-  if (transactionID !== null) {
-    const session = adapter.sessions?.[String(transactionID)]
-    if (session !== undefined) return session.db
-  }
-
-  return adapter.drizzle
-}
-
-/**
- * How many rows a statement changed, across the shapes drizzle's adapters return.
- *
- * node-postgres reports `rowCount`; some drivers return an array of the affected rows instead.
- * This is the difference between "held" and "sold out", so it is read defensively rather than
- * assumed — a wrong answer here silently oversells.
- */
-function rowsAffected(result: unknown): number {
-  if (Array.isArray(result)) return result.length
-
-  if (typeof result === 'object' && result !== null) {
-    const row = result as { rowCount?: unknown; rows?: unknown }
-
-    if (typeof row.rowCount === 'number') return row.rowCount
-    if (Array.isArray(row.rows)) return row.rows.length
-  }
-
-  return 0
-}
-
-/** Rows from a `SELECT`, across the same driver differences. */
-function rowsOf(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) return result as Array<Record<string, unknown>>
-
-  if (typeof result === 'object' && result !== null) {
-    const rows = (result as { rows?: unknown }).rows
-    if (Array.isArray(rows)) return rows as Array<Record<string, unknown>>
-  }
-
-  return []
-}
-
-function toCount(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
-  // Postgres returns bigint-ish columns as strings through some drivers.
-  if (typeof value === 'string') {
-    const parsed = Number.parseInt(value, 10)
-
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-
-  return 0
-}
 
 export interface PayloadReservationOptions {
   payload: Payload
@@ -121,7 +54,7 @@ export interface PayloadReservationOptions {
  */
 export function createPayloadReservationStore(options: PayloadReservationOptions): ReservationStore {
   const { payload, transactionID = null, actor = null } = options
-  const client = clientFor(payload, transactionID)
+  const client = drizzleClientFor(payload, transactionID)
   const req: { req?: PayloadRequest } =
     transactionID === null ? {} : { req: { transactionID } as PayloadRequest }
 
@@ -208,7 +141,7 @@ export async function readReservedQty(
   variantId: number | string,
   transactionID: string | number | null = null,
 ): Promise<number> {
-  const result = await clientFor(payload, transactionID).execute(sql`
+  const result = await drizzleClientFor(payload, transactionID).execute(sql`
     SELECT COALESCE(reserved_qty, 0) AS reserved_qty FROM variants WHERE id = ${variantId}
   `)
 

@@ -18,12 +18,14 @@
  * ordinary traffic. The event id is recorded in the audit trail and checked against it before
  * anything happens, so replays two and three change nothing and say so (OWASP A08).
  */
+import { sql } from 'drizzle-orm'
 import type { Payload, Where } from 'payload'
 
 import type { Order } from '@/payload-types'
 import { commitReservation, holdReservation, releaseReservation, type HoldOutcome } from '@/lib/inventory/reservationStore'
 import { createPayloadReservationStore } from '@/lib/inventory/payloadReservation'
 import type { PaymentEvent } from '@/lib/payments/types'
+import { drizzleClientFor, rowsOf, toCount } from '@/lib/utils/drizzle'
 import { numericId, optionalNumericId, relationshipId } from '@/lib/utils/ids'
 import { transactionReq, withTransaction } from '@/lib/utils/transaction'
 import { buildOrderNumber } from './orderNumber'
@@ -63,6 +65,62 @@ async function nextSequence(payload: Payload, datePrefix: string, transactionID:
   })
 
   return totalDocs + 1
+}
+
+/**
+ * Take an exclusive lock on one order row, so the caller can read state and act on it without
+ * another request changing it in between.
+ *
+ * **Why this is necessary, and why re-reading is not enough.** Postgres defaults to READ COMMITTED,
+ * where every statement gets a fresh snapshot but nothing stops two transactions interleaving a
+ * read and a write. `applyPaymentEvent` reads the event trail, decides, then writes. Two concurrent
+ * deliveries of the same event would *both* read a trail without that event id and both read
+ * `paymentStatus: 'pending'`, so neither the duplicate-event check nor the already-paid check would
+ * fire — and the order would be confirmed twice and its stock committed twice. Payment providers
+ * retry as a matter of course, so this is ordinary traffic rather than an attack (OWASP A08).
+ *
+ * `FOR UPDATE` closes it by ordering the two transactions: the second blocks here, before it has
+ * read anything, and once the first commits it reads the trail *including* the new event and
+ * decides `duplicate_event`. The lock is what makes the pure decision in `paymentApply.ts` safe to
+ * base on a read.
+ *
+ * Two honest limitations:
+ *
+ * - **A lock outside a transaction is not a lock.** Postgres releases it at the end of the
+ *   statement, so this only guarantees anything when `transactionID` is non-null. Every caller here
+ *   is inside `withTransaction`, and `transition` opens one when it was not given one.
+ * - It locks the row, not the order's items or its variants. Stock has its own guarantee, in
+ *   `payloadReservation.ts`, and does not lean on this one.
+ *
+ * Returns the locked order's id, or `null` when no such order exists — so the existence check and
+ * the lock are the same statement rather than two that can disagree.
+ */
+async function lockOrderByNumber(
+  payload: Payload,
+  orderNumber: string,
+  transactionID: string | number | null,
+): Promise<number | null> {
+  const result = await drizzleClientFor(payload, transactionID).execute(sql`
+    SELECT id FROM orders WHERE order_number = ${orderNumber} FOR UPDATE
+  `)
+
+  const row = rowsOf(result)[0]
+  if (row === undefined) return null
+
+  const id = toCount(row.id)
+
+  return id > 0 ? id : null
+}
+
+/** The same lock, by id, for callers that already know it. */
+async function lockOrderById(
+  payload: Payload,
+  id: number,
+  transactionID: string | number | null,
+): Promise<void> {
+  await drizzleClientFor(payload, transactionID).execute(sql`
+    SELECT id FROM orders WHERE id = ${id} FOR UPDATE
+  `)
 }
 
 export interface PayloadOrdersOptions {
@@ -232,6 +290,12 @@ export function createPayloadOrders(options: PayloadOrdersOptions) {
      * The validation is not a formality: `assertTransition` is what stops a delivered order being
      * marked pending, or a cancelled one shipping. It throws rather than returning false, because
      * every caller here would only turn a false into a throw anyway.
+     *
+     * Read → validate → write is only sound if nothing moves the order in between. Two concurrent
+     * transitions would otherwise both read the same `fromStatus`, both validate against it, and the
+     * loser would overwrite the winner with a jump that was never legal from the status the order
+     * actually reached. So the row is locked first — and a caller who supplied no transaction is
+     * given one, because a lock outside a transaction is released at once and guarantees nothing.
      */
     async transition(input: {
       orderId: number | string
@@ -242,48 +306,57 @@ export function createPayloadOrders(options: PayloadOrdersOptions) {
       transactionID?: string | number | null
     }): Promise<void> {
       const { orderId, toStatus, source, note, actor = null, transactionID = null } = input
-      const req = transactionReq(transactionID)
       const id = numericId(orderId)
 
-      const order = (await payload.findByID({
-        collection: 'orders',
-        id,
-        depth: 0,
-        overrideAccess: true,
-        ...req,
-      })) as Order
+      const apply = async (txId: string | number | null): Promise<void> => {
+        const req = transactionReq(txId)
 
-      const fromStatus = order.status
+        await lockOrderById(payload, id, txId)
 
-      assertTransition(fromStatus, toStatus)
+        const order = (await payload.findByID({
+          collection: 'orders',
+          id,
+          depth: 0,
+          overrideAccess: true,
+          ...req,
+        })) as Order
 
-      await payload.update({
-        collection: 'orders',
-        id,
-        data: {
-          status: toStatus,
-          ...(toStatus === 'delivered' ? { deliveredAt: new Date().toISOString() } : {}),
-          ...(toStatus === 'cancelled' ? { cancelledAt: new Date().toISOString() } : {}),
-        },
-        depth: 0,
-        overrideAccess: true,
-        ...req,
-      })
+        const fromStatus = order.status
 
-      await payload.create({
-        collection: 'orderEvents',
-        data: {
-          order: id,
-          fromStatus,
-          toStatus,
-          source,
-          ...(note === undefined ? {} : { note }),
-          ...(actor === null ? {} : { actor: optionalNumericId(actor) }),
-        },
-        depth: 0,
-        overrideAccess: true,
-        ...req,
-      })
+        assertTransition(fromStatus, toStatus)
+
+        await payload.update({
+          collection: 'orders',
+          id,
+          data: {
+            status: toStatus,
+            ...(toStatus === 'delivered' ? { deliveredAt: new Date().toISOString() } : {}),
+            ...(toStatus === 'cancelled' ? { cancelledAt: new Date().toISOString() } : {}),
+          },
+          depth: 0,
+          overrideAccess: true,
+          ...req,
+        })
+
+        await payload.create({
+          collection: 'orderEvents',
+          data: {
+            order: id,
+            fromStatus,
+            toStatus,
+            source,
+            ...(note === undefined ? {} : { note }),
+            ...(actor === null ? {} : { actor: optionalNumericId(actor) }),
+          },
+          depth: 0,
+          overrideAccess: true,
+          ...req,
+        })
+      }
+
+      // A caller already inside a transaction keeps it, so this joins their atomic unit rather than
+      // opening a second one that would wait on the first one's lock and deadlock against it.
+      return transactionID === null ? withTransaction(payload, apply) : apply(transactionID)
     },
 
     /**
@@ -298,17 +371,19 @@ export function createPayloadOrders(options: PayloadOrdersOptions) {
       return withTransaction(payload, async (transactionID) => {
         const req = transactionReq(transactionID)
 
-        const { docs } = await payload.find({
+        // Lock **first**, before a single byte of state is read. A concurrent delivery of the same
+        // event blocks here rather than racing the duplicate check below. See `lockOrderByNumber`.
+        const lockedId = await lockOrderByNumber(payload, event.reference, transactionID)
+        if (lockedId === null) return { action: 'ignore', reason: 'reference_mismatch' } as const
+
+        const order = (await payload.findByID({
           collection: 'orders',
-          where: { orderNumber: { equals: event.reference } } satisfies Where,
+          id: lockedId,
           depth: 0,
-          limit: 1,
-          pagination: false,
           overrideAccess: true,
           ...req,
-        })
+        })) as Order | null
 
-        const order = (docs[0] as Order | undefined) ?? null
         if (order === null) return { action: 'ignore', reason: 'reference_mismatch' } as const
 
         // The event ids already applied, recovered from the append-only audit trail rather than a
