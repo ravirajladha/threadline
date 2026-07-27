@@ -85,7 +85,7 @@ export function Header({ categories }: HeaderProps): React.ReactElement {
         </div>
       </div>
 
-      {/* eslint-disable-next-line react/no-danger -- static script, no user input, see comment above. */}
+      {/* Static script, no user input — see the comment on HAIRLINE_SCRIPT above. */}
       <script dangerouslySetInnerHTML={{ __html: HAIRLINE_SCRIPT }} />
     </header>
   )

@@ -18,7 +18,7 @@ export function JsonLd({ data }: { data: Record<string, unknown> | Record<string
   return (
     <script
       type="application/ld+json"
-      // eslint-disable-next-line react/no-danger -- Escaped at the boundary; see the docblock.
+      // Escaped at the boundary by `escapeJsonLd`; see the docblock above.
       dangerouslySetInnerHTML={{ __html: escapeJsonLd(data) }}
     />
   )
