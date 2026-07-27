@@ -19,6 +19,7 @@
  */
 import type { OrderStatus, PaymentStatus } from '@/types'
 import type { PaymentEvent } from '@/lib/payments/types'
+import { eventIdsFrom, PAYMENT_EVENT_ID_PREFIXES } from './eventTrail'
 import { canTransition, canTransitionPayment, statusAfterPayment, statusAfterPaymentFailure } from './transitions'
 
 /** The order as the webhook handler read it. */
@@ -70,11 +71,16 @@ export function eventNote(event: PaymentEvent): string {
   return `${event.type} ${event.id}`
 }
 
-/** Recover the event ids recorded in an order's audit trail. */
+/**
+ * Recover the **payment** event ids recorded in an order's audit trail.
+ *
+ * A thin wrapper over `eventTrail.eventIdsFrom` bound to the payment prefixes. Kept as its own name
+ * because a caller that means "payment ids" should not have to pass a prefix list and get it wrong —
+ * asking for payment ids and receiving tracking ids too would make an unrelated delivery scan look
+ * like a duplicate capture.
+ */
 export function processedEventIdsFrom(notes: readonly (string | null | undefined)[]): string[] {
-  return notes
-    .map((note) => (typeof note === 'string' ? /\b(?:stub_evt_|evt_)[A-Za-z0-9_-]+/.exec(note)?.[0] ?? null : null))
-    .filter((id): id is string => id !== null)
+  return eventIdsFrom(notes, PAYMENT_EVENT_ID_PREFIXES)
 }
 
 function ignore(reason: PaymentIgnoreReason): PaymentApplyDecision {

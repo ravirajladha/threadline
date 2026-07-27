@@ -510,7 +510,13 @@ No schema change: `orders` already carries `awbCode`, `courier` and `shiprocketO
 - [x] `stubProvider.ts` — fabricates a deterministic AWB, advances tracking on demand, and **signs
       its webhook for real** so the local flow runs over verification rather than around it
 - [x] `factory.ts` — selects by environment; throws at startup if production has no real provider
-- [ ] `payloadShipping.ts` — the port: attach an AWB to an order, apply a tracking event
+- [x] `trackingApply.ts` — pure: verified event + order state → apply, or one of six typed reasons to
+      do nothing. Identity (order, then parcel) is checked before meaning, so a stranger's event id
+      can never be recorded against our order. An unreachable status is an *ignore*, never a throw —
+      a 500 to a courier buys nothing but a retry storm
+- [x] `orders/eventTrail.ts` — recovering provider event ids from `orderEvents.note`, with the id
+      prefixes as a **parameter**. Payments and tracking must not see each other's ids
+- [x] `payloadShipping.ts` — the port: attach an AWB to an order, apply a tracking event
       idempotently by event id, and move status only through the orders port so every change still
       writes an `orderEvents` row
 
@@ -829,3 +835,41 @@ Every one keeps its stub, which is what the test suite and local development con
   object — a test that has to build an env bag to exercise a parser is testing the bag, and typing it
   as a partial `ProcessEnv` tripped TypeScript's weak-type check anyway.
   Nothing to set on Railway: 1 is the default, so the deployment is already correct.
+- 2026-07-27 [J5, part 2]: **Tracking works end to end at the library level.** `npm run check` green at
+  1226 unit tests (up from 1200). Shipped `shipping/trackingApply.ts`, `shipping/payloadShipping.ts`
+  and `orders/eventTrail.ts`. Still `[ ]` — no routes, no scheduler, no admin actions.
+  The blocker flagged last session was real: `processedEventIdsFrom` matched only `evt_`/`stub_evt_`,
+  so every replayed *delivery* scan would have looked new and a duplicate "DELIVERED" would have been
+  applied twice. Rather than a second copy of the scraper, the prefixes became a parameter and the
+  function moved to `orders/eventTrail.ts` — a file neither integration owns (§3, second use).
+  `paymentApply.processedEventIdsFrom` is now a named wrapper bound to the payment prefixes, kept so a
+  caller cannot ask for "payment ids" and silently receive tracking ids too. A test asserts each
+  integration is blind to the other's ids, which is the bug restated as a guard.
+  Tokenising the note beats a regex here: an alternation over prefixes has to be ordered longest-first
+  or `evt_` matches *inside* `stub_evt_1` and yields a different id. That is a trap for whoever adds
+  the third prefix, not a property of the code, so splitting on whitespace and comparing prefixes is
+  the version that stays correct.
+  **`orderEvents.toStatus` is `required: true`, and that shaped the design for the better.** An
+  informational scan has no target status, so it cannot be recorded without inventing a transition
+  that never happened. It turns out it does not need to be: the only side-effecting path is a status
+  change, whose id `transition` already writes into its note, and applying a no-op scan twice does
+  nothing twice. So idempotency falls out for free and J5 still needs no migration. The cost is that
+  the trail holds status changes rather than every courier scan — if a full scan history is wanted for
+  the customer timeline, that is a `shipmentEvents` collection and a migration, at J8.
+  Design notes worth keeping. **A scan the order cannot act on is an ignore, never a throw** — six
+  typed reasons, and only `unknown_status` is worth a warning, because everything else is ordinary
+  courier noise while an unrecognised string means the provider's vocabulary moved and `statusMap`
+  needs a row. **Identity is checked before meaning**: wrong order, then wrong parcel, then duplicate,
+  then what the status means — so a courier reporting a stranger's AWB against our order number cannot
+  mark it delivered. And a scan arriving *before* our own booking write is accepted, since refusing it
+  would strand the order at `packed` for ever.
+  `payloadShipping` never writes `orders.status` itself; it calls `payloadOrders.transition`, which
+  inherits J4's row lock and guarantees the audit row. `bookShipment` locks before reading the AWB, so
+  a double-clicked button returns the existing parcel instead of booking — and paying for — a second
+  one. Deliberately no stock movement on delivery or RTO: stock was committed at capture, and units
+  come back only through J8's returns flow, after the goods are inspected.
+  **Exact next action:** `orders/payloadFulfilment.ts` (pack and ship, re-checking the role, driven by
+  `fulfilment.ts`), then the three routes — `/api/webhooks/shipping`, `/api/shipping/simulate` and
+  `/api/cron/[job]`. The scheduler (`lib/scheduler/`) is untouched and is the larger half of what is
+  left in J5. Note `Variants.weightGrams` is often unset in seed data, so `parcelWeightFor` falls back
+  to 300g per item — fine for the stub, worth filling in before a real courier quotes on it.

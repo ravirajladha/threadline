@@ -75,6 +75,21 @@ export function Header({ categories, bagCount = 0 }: HeaderProps): React.ReactEl
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          {/*
+            The only `prefetch={false}` in the storefront, and the one place it is warranted.
+
+            `/admin` is Payload's route group with its own root layout, so React cannot navigate
+            into it — the browser performs a full document load regardless. Prefetching therefore
+            buys nothing, while costing every shopper who merely scrolls past the header a pull of
+            the admin bundle: over a megabyte of JavaScript they can never use.
+          */}
+          <Link
+            href="/admin"
+            prefetch={false}
+            className="text-fg-muted hover:text-fg rounded-control px-2 py-1 text-sm font-medium transition-colors duration-fast ease-out"
+          >
+            Admin
+          </Link>
           <button
             type="button"
             disabled

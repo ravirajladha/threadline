@@ -95,7 +95,7 @@ async function nextSequence(payload: Payload, datePrefix: string, transactionID:
  * Returns the locked order's id, or `null` when no such order exists — so the existence check and
  * the lock are the same statement rather than two that can disagree.
  */
-async function lockOrderByNumber(
+export async function lockOrderByNumber(
   payload: Payload,
   orderNumber: string,
   transactionID: string | number | null,
@@ -113,7 +113,7 @@ async function lockOrderByNumber(
 }
 
 /** The same lock, by id, for callers that already know it. */
-async function lockOrderById(
+export async function lockOrderById(
   payload: Payload,
   id: number,
   transactionID: string | number | null,

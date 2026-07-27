@@ -51,6 +51,22 @@ export interface FulfilmentState {
 }
 
 /**
+ * Statuses at which asking a courier for a parcel makes sense.
+ *
+ * Not a fulfilment *action*, because booking is not a status change — an order stays `confirmed` or
+ * `packed` while it acquires an AWB. It lives here anyway because it is the same kind of rule and
+ * belongs beside the one it feeds: `ship` is refused with `no_awb` until a booking has happened.
+ *
+ * `confirmed` is included as well as `packed` so a label can be printed before the parcel is made up,
+ * which is how most small operations actually work.
+ */
+export const BOOKABLE_STATUSES: readonly OrderStatus[] = Object.freeze(['confirmed', 'packed'])
+
+export function canBookShipment(status: OrderStatus): boolean {
+  return BOOKABLE_STATUSES.includes(status)
+}
+
+/**
  * Whether one action is available.
  *
  * The order of the checks is deliberate: the transition is tested first, so an order that is
