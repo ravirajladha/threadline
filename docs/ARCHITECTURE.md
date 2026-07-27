@@ -355,13 +355,107 @@ bypass open, too high buckets every visitor behind one edge node together. An un
 falls into a single shared `unknown` bucket rather than being granted a private one, which is
 deliberately the aggressive direction: a forged header earns a worse allowance than an honest one.
 
-## 10. Shipping — Shiprocket
+## 10. Fulfilment and shipping
 
-_pending (J5 stub, J11 live)_
+Built entirely against `StubShippingProvider` (CLAUDE.md §2). The parts that must be right when a
+real courier arrives — signature verification, idempotency by event id, the status machine and the
+row lock around it — are built for real now and tested against the stub's payloads. No migration:
+`orders` already carried `awbCode`, `courier` and `shiprocketOrderId` from J1, and `orderEvents` is
+already the audit trail.
+
+**The interface is shaped around what has to be trusted.** `createShipment` may be fabricated by a
+stub; `verifyWebhook` is the security boundary, because a tracking callback is how an order becomes
+`delivered` — which closes it, stops the customer being chased and starts the return window. The
+stub's `simulateTracking`, `nextCourierStatus` and `currentCourierStatus` are on the class and
+deliberately **off** the interface: a real courier has none of them, so nothing in fulfilment can
+come to depend on being able to advance a parcel by asking.
+
+**A courier status maps to one of three answers, never to a nullable status.** `{ kind: 'status' }`,
+`{ kind: 'no_change' }` and `{ kind: 'unknown' }` are different facts: "PICKUP SCHEDULED" is
+recognised and moves nothing, while an unrecognised code means the provider's vocabulary has drifted
+and `statusMap` needs a row. Collapsing both into `null` is how tracking silently stops working. The
+case this exists for is `UNDELIVERED` — a substring fallback ("contains 'deliver'") would mark an
+undelivered parcel delivered, so there is no fallback at all and a test pins it.
+
+**`trackingApply.ts` checks identity before meaning.** Wrong order, then wrong parcel, then
+duplicate, then what the status means — so a courier reporting a stranger's AWB against our order
+number cannot mark it delivered. A scan the order cannot act on is an *ignore* with one of six typed
+reasons, never a throw: a 500 to a courier buys nothing but a retry storm. A scan arriving before our
+own booking write is accepted, since refusing it would strand the order at `packed` for ever.
+
+**Idempotency reuses the audit trail.** `orders/eventTrail.ts` recovers provider event ids from
+`orderEvents.note`, with the id prefixes as a *parameter* — payments and tracking must not see each
+other's ids, and a test asserts each integration is blind to the other's. Tokenising the note beats a
+regex: an alternation over prefixes has to be ordered longest-first or `evt_` matches inside
+`stub_evt_1`. `orderEvents.toStatus` is required, so an informational scan cannot be recorded without
+inventing a transition that never happened — and does not need to be, since applying a no-op scan
+twice does nothing twice. The trail therefore holds status changes, not every courier scan; a full
+scan history for the customer timeline would be a `shipmentEvents` collection and a migration, at J8.
+
+**Nothing writes `orders.status` directly.** `payloadShipping` and `payloadFulfilment` both call
+`payloadOrders.transition`, which validates the jump, inherits J4's `SELECT … FOR UPDATE` and writes
+the `orderEvents` row. `bookShipment` locks before reading the AWB, so a double-clicked button
+returns the existing parcel rather than booking — and paying for — a second one. Deliberately no
+stock movement on delivery or RTO: stock was committed at capture, and units come back only through
+J8's returns flow, after the goods are inspected.
+
+**Fulfilment is a decision, not a condition in a component.** `orders/fulfilment.ts` asks the status
+machine rather than restating it, and adds only what a transition cannot express — no shipping
+without an AWB, no packing a prepaid order that has not been paid for. Refusals are ordered so the
+most fundamental reason wins: a cancelled order reports `illegal_transition`, not "book a courier
+first", which would read as an instruction. A test walks every `ORDER_STATUSES` value against
+`canTransition` to prove this file can only ever be stricter than the graph.
+
+`orders/payloadFulfilment.ts` is the staff-facing port. It re-checks the role **before the order is
+read**, so a caller who may not fulfil orders cannot learn from the difference between "forbidden"
+and "not found" whether an id exists (A01/A07); it re-reads state under the row lock rather than
+trusting the admin screen's snapshot (A04); and it takes the shipping port as a *thunk*, because
+resolving a courier throws when production has none configured and packing an order does not involve
+one. The admin panel renders `fulfilmentOptions` — the same function — so an enabled button and a
+server refusal cannot disagree, and a refused action is shown disabled with its reason.
 
 ## 11. Scheduler
 
-_pending (J5)_
+**One registry, one runner, one route.** `registry.ts` throws at module load on a duplicate job name
+— two jobs under one name otherwise surfaces as one of them silently never running — and on a
+`JobName` with no implementation. Lookup by name is the only way `/api/cron/[job]` can reach a
+handler, so a URL segment cannot select arbitrary code: `findJob` narrows against a closed union
+first, and the worst an unknown name does is return null.
+
+`runner.ts` turns a throw into a failed `JobResult` and a hang into a failure after a timeout, and
+measures the duration. Stated honestly: **a timeout abandons a job, it does not cancel it** — JS
+cannot interrupt a running promise — so every job must be safe to have run twice.
+
+**A job reports counts, not prose.** `{ examined: 120, notified: 3, too_recent: 117 }` makes a run
+auditable from the response alone; a job that returns "ok" is one nobody notices has stopped doing
+anything. Each job is a pure decision over *who qualifies* plus a thin port, so the rules are tested
+without a database — which matters because a cron firing hourly turns a wrong rule into an hourly
+wrong rule.
+
+| Job | Qualifies | Idempotency |
+|---|---|---|
+| `abandoned-cart` | has items, has an address to write to, idle ≥ 6h, ≤ 72h old | `carts.abandonedNotifiedAt` |
+| `status-sync` | in a courier's hands, has an AWB, no movement for 48h | none needed — it only reports |
+| `stock-alerts` | subscribed, `stockQty − reservedQty` > 0 | notification subject `restock:<customer>:<sku>` |
+| `review-requests` | delivered, 5–30 days ago | notification subject `order:<orderNumber>` |
+
+**`status-sync` does not poll the courier**, and that is deliberate: `ShippingProvider` has no
+tracking fetch because a webhook-only courier cannot answer one. It does the thing a webhook cannot
+do for itself — notice *silence*. A missed webhook has no failure signature; the order simply sits at
+`shipped` for ever. An in-flight parcel with no history at all is reported as stale rather than as
+fine, because that is a bug rather than a quiet week.
+
+**Idempotency comes from the notification log, not a second table** (`lib/notify/queue.ts`) — the
+same argument as `eventTrail.ts`. A `subject` string identifies the *occasion* a message is about and
+is matched exactly, never by prefix. Consequence worth knowing: a variant that goes in and out of
+stock repeatedly produces one alert, not five. That is the intended trade.
+
+**Cron authentication is the whole of the authorisation.** A job runs with no user and full
+authority. `CRON_SECRET` is compared in constant time over a SHA-256 digest, so the comparison cannot
+leak the secret's length, and an *unset* secret refuses every request rather than allowing them — the
+"skip the check if it is not configured" shortcut is how a missing environment variable becomes an
+open endpoint. A wrong secret and an unknown job name both answer **404, never 401** (CLAUDE.md §2),
+so the route confirms neither that it exists nor which jobs do.
 
 ## 12. Notifications — email and WhatsApp
 
@@ -394,6 +488,14 @@ admin internals (`.dashboard`) are version-sensitive — expect to revisit them 
 
 ## Changelog
 
+- **2026-07-27 (J5)** — Orders, fulfilment and the scheduler, against `StubShippingProvider`.
+  `src/lib/shipping/` with the provider contract, the courier status table, tracking application and
+  the Payload port; `orders/fulfilment.ts` and `payloadFulfilment.ts`; one job registry, runner and
+  four jobs; `/api/webhooks/shipping`, `/api/shipping/simulate` and `/api/cron/[job]`; fulfilment
+  actions on the admin order view. No migration. 1308 unit tests.
+- **2026-07-27 (J4)** — Cart, checkout and orders, against `StubGateway`. Pricing, cart, stock
+  reservation, the order status machine and the payment webhook; the row lock that made
+  `applyPaymentEvent` safe under READ COMMITTED. 1108 unit tests.
 - **2026-07-27 (J3)** — Storefront browse. `src/lib/catalog/` behind a `CatalogPort` interface —
   URL-canonical filters, variant-level faceting, in-memory selection over one cached catalog read;
   `src/lib/seo/` metadata and JSON-LD builders with boundary escaping; security headers and CSP;

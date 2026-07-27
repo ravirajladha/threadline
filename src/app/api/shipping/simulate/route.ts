@@ -33,7 +33,15 @@ export const dynamic = 'force-dynamic'
 const NOT_FOUND = { error: 'Not found.' }
 
 export const POST = safeRoute(async (request: Request): Promise<Response> => {
-  const provider = getShippingProvider()
+  // The factory *throws* when the stub is selected in production, or when a real provider is asked
+  // for before J11 implements one. Left to propagate that is a 500 from `safeRoute` — and a 500 is
+  // an admission that the route exists. Caught here so every non-development answer is the same 404.
+  let provider: unknown
+  try {
+    provider = getShippingProvider()
+  } catch {
+    return json(NOT_FOUND, 404)
+  }
 
   // Belt and braces over the factory's own production guard.
   if (!(provider instanceof StubShippingProvider)) return json(NOT_FOUND, 404)

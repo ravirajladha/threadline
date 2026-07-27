@@ -90,6 +90,11 @@ export async function alreadyQueued(
  * is never picked up is a visible backlog rather than a silently dropped message.
  */
 export async function queueNotification(payload: Payload, request: NotificationRequest): Promise<boolean> {
+  // Every caller's decision already guarantees a recipient; this is the guard for the day one of
+  // them stops. A row with an empty recipient is a message that can never be delivered and never be
+  // explained, and it would sit in the log looking like a send that happened.
+  if (request.recipient.trim().length === 0) return false
+
   if (await alreadyQueued(payload, request)) return false
 
   await payload.create({

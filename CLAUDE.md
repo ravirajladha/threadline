@@ -491,7 +491,7 @@ Routes: `/cart` · `/checkout` · `/checkout/success`. API: cart mutations · `/
 - [x] `npm run check` green — 1108 unit tests; `npm run build` green
 - [x] `docs/ARCHITECTURE.md` §9 written
 
-### [ ] J5 — Orders & fulfilment + scheduler *(stubbed courier)*
+### [x] J5 — Orders & fulfilment + scheduler *(stubbed courier)*
 **Goal:** an order can be fulfilled. Staff move it packed → shipped, a courier is asked for an AWB,
 tracking advances the status through a signature-verified webhook, and four recurring jobs run from
 one registry on secret-protected cron routes. The courier is a `StubShippingProvider`; the webhook
@@ -523,33 +523,33 @@ No schema change: `orders` already carries `awbCode`, `courier` and `shiprocketO
 **Fulfilment — `src/lib/orders/`**
 - [x] `fulfilment.ts` — pure: given an order's status, which fulfilment actions are legal, and the
       typed reason each refused one was refused. Staff UI renders this rather than deciding it
-- [ ] `payloadFulfilment.ts` — pack and ship, each re-checking the role and reusing `transition`'s
+- [x] `payloadFulfilment.ts` — pack and ship, each re-checking the role and reusing `transition`'s
       row lock rather than writing status directly
 
 **Scheduler — `src/lib/scheduler/`**
-- [ ] `types.ts` — `Job` (name, description, handler) and `JobResult`. A job reports what it did in
+- [x] `types.ts` — `Job` (name, description, handler) and `JobResult`. A job reports what it did in
       counts, so a cron run is auditable without reading logs
-- [ ] `registry.ts` — **one** registry. A duplicate job name throws at module load, not at 3am;
+- [x] `registry.ts` — **one** registry. A duplicate job name throws at module load, not at 3am;
       lookup by name is the only way a route can reach a handler, so a URL cannot name arbitrary code
-- [ ] `runner.ts` — runs one job with a timeout, catches its throw into a failed `JobResult`, and
+- [x] `runner.ts` — runs one job with a timeout, catches its throw into a failed `JobResult`, and
       records the duration. One job failing must never take the others with it
-- [ ] `jobs/abandonedCart.ts` · `statusSync.ts` · `stockAlerts.ts` · `reviewRequests.ts` — each a
+- [x] `jobs/abandonedCart.ts` · `statusSync.ts` · `stockAlerts.ts` · `reviewRequests.ts` — each a
       pure decision (which rows qualify, given a clock) plus a thin port. Notifications are queued
       through J6's dispatcher once it exists; until then they write the `notifications` row directly
 
 **Surfaces**
-- [ ] `/api/cron/[job]` — `CRON_SECRET` required, compared in constant time. A bad secret or an
+- [x] `/api/cron/[job]` — `CRON_SECRET` required, compared in constant time. A bad secret or an
       unknown job name is a **404, never a 401** (CLAUDE.md §2), so the route does not confirm which
       jobs exist. Runs exactly one job per request
-- [ ] `/api/webhooks/shipping` — verify signature over the raw body → parse → idempotent apply.
+- [x] `/api/webhooks/shipping` — verify signature over the raw body → parse → idempotent apply.
       Unverified is a 400 with no detail
-- [ ] `/api/shipping/simulate` — development only, feeds a genuinely signed tracking event through
+- [x] `/api/shipping/simulate` — development only, feeds a genuinely signed tracking event through
       the real webhook handler. Refuses unless the provider really is the stub; 404 if not
-- [ ] Admin: fulfilment actions on the order view, driven by `fulfilment.ts`
-- [ ] OWASP pass: A01 fulfilment endpoints re-check the role, A04 status changes go through the
+- [x] Admin: fulfilment actions on the order view, driven by `fulfilment.ts`
+- [x] OWASP pass: A01 fulfilment endpoints re-check the role, A04 status changes go through the
       machine and the row lock, A08 webhook signature + idempotency by event id, A09 every tracking
       event and job run logged without PII, A10 no user-supplied URL is ever fetched
-- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §10 and §11 written
+- [x] `npm run check` green; `docs/ARCHITECTURE.md` §10 and §11 written
 
 ### [ ] J6 — Notifications *(stubbed delivery)*
 Single `notify.dispatch(event, payload)` API with a **`ConsoleChannel`** that renders the template,
@@ -873,3 +873,58 @@ Every one keeps its stub, which is what the test suite and local development con
   `/api/cron/[job]`. The scheduler (`lib/scheduler/`) is untouched and is the larger half of what is
   left in J5. Note `Variants.weightGrams` is often unset in seed data, so `parcelWeightFor` falls back
   to 300g per item — fine for the stub, worth filling in before a real courier quotes on it.
+- 2026-07-27 [J5, closed]: **Stage complete.** `npm run check` green — typecheck, lint and 1308 unit
+  tests (up from 1226). `docs/ARCHITECTURE.md` §10 and §11 written; §10 retitled "Fulfilment and
+  shipping", since "Shipping — Shiprocket" named a provider this stage deliberately does not use.
+  Shipped: `orders/payloadFulfilment.ts`, the whole of `lib/scheduler/` (types, registry, runner and
+  four jobs), `lib/notify/queue.ts`, `lib/http/cronAuth.ts`, the three routes, and the fulfilment
+  panel plus its two endpoints on the admin order view. No migration — confirmed again at the end,
+  not assumed at the start.
+  **The stage's one open design question was idempotency, and it shaped everything.** A cron that
+  fires hourly must not send an hourly email, and only one of the four jobs had a marker field
+  (`carts.abandonedNotifiedAt`). The obvious answer was two new columns and a migration. The one
+  taken instead was J4's: the record of what we sent **is** the notification row, so ask it — a
+  `subject` string identifying the *occasion* (`order:260720-0003`, `restock:5:TL-SHIRT-NAVY-M`),
+  matched exactly and never by prefix, narrowed in SQL by the indexed `event` and `recipient`. One
+  record rather than two that can disagree, and J5 stays migration-free. The cost is stated in the
+  architecture: a variant that goes in and out of stock five times produces one alert, not five.
+  **`status-sync` does not poll the courier, and refusing to was the right call.** The obvious
+  reading of the job name is "ask Shiprocket what happened". But last session put
+  `simulateTracking` and `nextCourierStatus` on the stub *class* and deliberately off the
+  `ShippingProvider` interface, precisely so nothing could come to depend on advancing a parcel by
+  asking — a webhook-only courier cannot answer. Adding a `fetchTracking` method would have quietly
+  reversed that. So the job does the thing a webhook cannot do for itself: it notices **silence**. A
+  missed webhook has no failure signature — no error, no retry, nothing in a log — the order just
+  sits at `shipped` for ever. An in-flight parcel with no history at all is reported as stale rather
+  than as fine, because that is a bug, not a quiet week.
+  Two defects found by writing the tests rather than by reading the code. **`createPayloadFulfilment`
+  took the shipping port eagerly**, so the endpoint built a courier to *pack* an order — and the
+  factory throws when production has no real provider configured, which would have made packing fail
+  for want of a courier it never uses. Now a thunk, with a test asserting `perform` never resolves
+  one. And **`/api/shipping/simulate` answered 500 rather than 404 outside development**: the
+  factory's throw propagated to `safeRoute`, and a 500 is an admission that the route exists. Caught
+  now, so every non-development answer is the same 404.
+  On testing the lock honestly, per the J4 precedent: the concurrency assertions were **seen to
+  fail** before being trusted. Neutralising `lockOrderById` in `perform` fails two tests — and the
+  second failure mode is worth recording, because it is what the lock actually buys: without it the
+  losing flow *throws* out of `assertTransition` instead of returning a typed refusal, so a
+  double-clicked button would have shown staff a 500 rather than "this order is already packed".
+  The lock-aware Payload double moved out of `payloadOrders.spec.ts` into `tests/unit/support/` on
+  its second use, per §3, and gained a logger recorder so an audit-line claim can be asserted rather
+  than assumed — the denial test now proves the warning does not name the order it refused.
+  OWASP pass run against the code. **A01** holds twice over: `requireWrite` on each endpoint *and*
+  the port's own check, which runs before the order is read so "forbidden" and "not found" cannot be
+  told apart. **A04** verified by grep rather than by comment — the only writes to `orders.status`
+  anywhere are `transition` and `applyPaymentEvent`, both under the row lock; `payloadShipping` and
+  `payloadFulfilment` both go through `transition`. **A08** signature before parse, idempotency by
+  event id through `eventTrail`. **A09** every log line carries order number, AWB, decision and
+  counts, and no PII; `queueNotification` logs nothing at all. **A10** `Shipment.labelUrl` is stored
+  and handed to staff, never fetched, and the simulate route calls the webhook handler as a function
+  rather than over the network.
+  **Next: J6 — notifications**, which absorbs `lib/notify/queue.ts` into the dispatcher: this stage
+  wrote the row directly, as the journey allows, and the four jobs are its first callers. Owner to
+  run `npm run test:e2e` (still only proves J3 — no spec covers cart → checkout, let alone
+  fulfilment, and that gap is now the largest untested surface) and `npm run build`. `npm run seed`
+  only if the catalog is stale; the schema did not change this session. To exercise fulfilment
+  locally: set `CRON_SECRET` in `.env.local` before calling any `/api/cron/*` route — an unset secret
+  refuses every request by design.
