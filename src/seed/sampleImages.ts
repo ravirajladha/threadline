@@ -23,6 +23,21 @@ export interface SampleImage {
   colourSlug: string
 }
 
+/**
+ * Everything about a sample image except the pixels.
+ *
+ * The filename is what the seed matches an existing media row on, and deriving it costs a string
+ * concatenation while producing the image it names costs a raster. Splitting the two lets the
+ * seed ask "do I already have this?" before it pays — which is the difference between a re-seed
+ * that regenerates 32 images it then throws away and one that generates none.
+ */
+export interface SampleImagePlan {
+  filename: string
+  alt: string
+  colourSlug: string
+  svg: string
+}
+
 /** `docs/DESIGN.md` fixes the catalog at 4:5 portrait — 1000×1250 is that ratio at a web size. */
 export const SAMPLE_IMAGE_WIDTH = 1000
 export const SAMPLE_IMAGE_HEIGHT = 1250
@@ -178,9 +193,33 @@ export function sampleImageSvg(input: SampleImageSvgInput): string {
 
 // --- Rendering -------------------------------------------------------------------
 
-async function rasterise(svg: string): Promise<Buffer> {
-  // Quality 55 keeps these at a few KB each — they are placeholders, not assets to optimise.
-  return sharp(Buffer.from(svg)).webp({ quality: 55 }).toBuffer()
+/**
+ * SVG in, WebP out — and the one step in this module that depends on something other than its
+ * own inputs.
+ *
+ * `sharp` can only read SVG where the libvips it was built against includes librsvg, and the
+ * text in the card needs a font that fontconfig can actually resolve. Neither is true
+ * everywhere, and when either is missing the failure arrives as a bare `sharp` message with no
+ * indication of which of the dozens of images in a seed run produced it. Naming the image in the
+ * wrapper is what turns that into something diagnosable; `cause` keeps the original intact.
+ */
+async function rasterise(svg: string, filename: string): Promise<Buffer> {
+  try {
+    // Quality 55 keeps these at a few KB each — they are placeholders, not assets to optimise.
+    return await sharp(Buffer.from(svg)).webp({ quality: 55 }).toBuffer()
+  } catch (cause) {
+    throw new Error(`Could not rasterise the sample image ${filename}`, { cause })
+  }
+}
+
+/** Rasterises one planned image. Everything expensive about a sample image happens here. */
+export async function renderPlannedImage(plan: SampleImagePlan): Promise<SampleImage> {
+  return {
+    filename: plan.filename,
+    alt: plan.alt,
+    colourSlug: plan.colourSlug,
+    buffer: await rasterise(plan.svg, plan.filename),
+  }
 }
 
 /**
@@ -204,47 +243,68 @@ export async function renderSampleImage(input: {
   })
 
   const colourSlug = slugify(input.colourName)
+  const filename = `${slugify(input.productTitle)}-${colourSlug}-${input.index}.webp`
   return {
-    filename: `${slugify(input.productTitle)}-${colourSlug}-${input.index}.webp`,
+    filename,
     alt: `${input.productTitle} in ${input.colourName}`,
-    buffer: await rasterise(svg),
+    buffer: await rasterise(svg, filename),
     colourSlug,
   }
 }
 
+export interface SampleImageSetInput {
+  productTitle: string
+  productSlug: string
+  colours: readonly { name: string; slug: string; hex: string }[]
+  perColour?: number
+}
+
 /**
- * Renders `perColour` placeholder images for each colour a product is offered in.
+ * Names and composes `perColour` sample images for each colour a product is offered in, without
+ * rasterising any of them.
  *
  * Filenames are built from `productSlug` and each colour's own `slug` — not recomputed from
  * their titles — because that is what the seed's idempotency depends on: re-running it must
  * derive the exact same filename it derived last time so the "does a media row with this
  * filename already exist" check in `src/seed/index.ts` actually matches.
+ *
+ * A bad colour fails here, before any raster is attempted, which is the whole reason
+ * `normaliseHex` validates rather than trusting its input.
  */
-export async function renderSampleImages(input: {
-  productTitle: string
-  productSlug: string
-  colours: readonly { name: string; slug: string; hex: string }[]
-  perColour?: number
-}): Promise<SampleImage[]> {
+export function planSampleImages(input: SampleImageSetInput): SampleImagePlan[] {
   const perColour = input.perColour ?? DEFAULT_PER_COLOUR
-  const images: SampleImage[] = []
+  const plans: SampleImagePlan[] = []
 
   for (const colour of input.colours) {
     for (let index = 1; index <= perColour; index += 1) {
-      const svg = sampleImageSvg({
-        productTitle: input.productTitle,
-        colourName: colour.name,
-        colourHex: colour.hex,
-        variantLabel: variantLabelFor(index),
-      })
-
-      images.push({
+      plans.push({
         filename: `${input.productSlug}-${colour.slug}-${index}.webp`,
         alt: `${input.productTitle} in ${colour.name}`,
-        buffer: await rasterise(svg),
         colourSlug: colour.slug,
+        svg: sampleImageSvg({
+          productTitle: input.productTitle,
+          colourName: colour.name,
+          colourHex: colour.hex,
+          variantLabel: variantLabelFor(index),
+        }),
       })
     }
+  }
+
+  return plans
+}
+
+/**
+ * Plans and rasterises a product's whole set in one call.
+ *
+ * The seed itself does not use this — it plans first so it can skip the images it already has —
+ * but rendering a complete set is what a test or a one-off script wants, and having both keeps
+ * the two-step version from being the only way to ask a simple question.
+ */
+export async function renderSampleImages(input: SampleImageSetInput): Promise<SampleImage[]> {
+  const images: SampleImage[] = []
+  for (const plan of planSampleImages(input)) {
+    images.push(await renderPlannedImage(plan))
   }
 
   return images

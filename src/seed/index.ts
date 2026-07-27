@@ -24,7 +24,7 @@ import config from '../payload.config'
 import { createPayloadLedgerPort } from '../lib/inventory/payloadLedger'
 import { syncVariantStock } from '../lib/inventory/syncStock'
 import { slugify } from '../lib/utils/slug'
-import { renderSampleImages } from './sampleImages'
+import { planSampleImages, renderPlannedImage } from './sampleImages'
 import { STAFF_ROLES, type StaffRole } from '../types'
 
 // --- Guards -----------------------------------------------------------------
@@ -211,6 +211,61 @@ async function seed(): Promise<void> {
     overrideAccess: true,
   })
 
+  // Accounts first, and deliberately so.
+  //
+  // A store with no placeholder imagery is usable; a store nobody can log into is not. These
+  // rows are also the cheapest thing the seed produces — five upserts and no I/O beyond the
+  // database — so ordering them ahead of the catalog means the one thing the owner cannot work
+  // around cannot be taken out by the most expensive and most optional thing that follows.
+  for (const member of STAFF) {
+    await ensure(
+      payload,
+      'users',
+      { email: { equals: `${member.role}@threadline.example` } },
+      {
+        email: `${member.role}@threadline.example`,
+        password: SEED_PASSWORD,
+        name: member.name,
+        role: member.role,
+        isActive: true,
+      },
+    )
+  }
+
+  // A demo customer with an address, so checkout and tax have something to work against.
+  const customerId = await ensure(
+    payload,
+    'customers',
+    { email: { equals: 'demo@threadline.example' } },
+    {
+      email: 'demo@threadline.example',
+      password: SEED_PASSWORD,
+      name: 'Devi Krishnan',
+      phone: '9800000000',
+      whatsappOptIn: true,
+      emailVerified: true,
+    },
+  )
+
+  await ensure(
+    payload,
+    'addresses',
+    { and: [{ customer: { equals: customerId } }, { label: { equals: 'Home' } }] },
+    {
+      customer: customerId,
+      label: 'Home',
+      name: 'Devi Krishnan',
+      phone: '9800000000',
+      line1: '12 Sampige Road',
+      line2: 'Malleswaram',
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      pincode: '560003',
+      country: 'India',
+      isDefault: true,
+    },
+  )
+
   // Colours.
   const colourIds = new Map<string, number>()
   // Keyed by slug rather than name because the gallery step below only has the slug that
@@ -293,6 +348,7 @@ async function seed(): Promise<void> {
   let stockIndex = 0
   let mediaCreatedCount = 0
   let mediaReusedCount = 0
+  let galleryFailures = 0
 
   for (const spec of PRODUCTS) {
     const categoryId = categoryIds.get(spec.category)
@@ -384,66 +440,85 @@ async function seed(): Promise<void> {
     // so the product's default colour (`spec.colours[0]`) comes first, matching the order the
     // storefront's variant picker will default to. Media rows are matched on `filename` before
     // creation, which is what keeps a re-seed from doubling every image in the gallery.
-    const productColours = spec.colours.map((colourName) => {
-      const hex = COLOURS.find((candidate) => candidate.name === colourName)?.hex
-      if (hex === undefined) throw new Error(`Unknown seed colour ${colourName} for ${spec.title}`)
-      return { name: colourName, slug: slugify(colourName), hex }
-    })
+    //
+    // Contained on purpose. Imagery is the one part of the seed that leaves the database — it
+    // rasterises through `sharp` and writes files — so it is also the part most able to fail for
+    // reasons that have nothing to do with the catalog. A product without a gallery is still a
+    // browsable product, so a failure here is reported against the product that caused it and
+    // the run carries on, rather than taking down everything that would have come after.
+    try {
+      const productColours = spec.colours.map((colourName) => {
+        const hex = COLOURS.find((candidate) => candidate.name === colourName)?.hex
+        if (hex === undefined) throw new Error(`Unknown seed colour ${colourName} for ${spec.title}`)
+        return { name: colourName, slug: slugify(colourName), hex }
+      })
 
-    const sampleImages = await renderSampleImages({
-      productTitle: spec.title,
-      productSlug: slug,
-      colours: productColours,
-    })
+      // Planned, not rendered. Each plan carries the filename the media row would be matched on,
+      // so the raster is deferred until that lookup has proved it is actually needed — which is
+      // what makes a second run cost six lookups per product instead of six images.
+      const plans = planSampleImages({
+        productTitle: spec.title,
+        productSlug: slug,
+        colours: productColours,
+      })
 
-    const galleryEntries: Array<{ image: number; colour: number }> = []
-    for (const image of sampleImages) {
-      const colourId = colourSlugToId.get(image.colourSlug)
-      if (colourId === undefined) {
-        throw new Error(`No colour matches slug ${image.colourSlug} for ${spec.title}`)
+      const galleryEntries: Array<{ image: number; colour: number }> = []
+      for (const plan of plans) {
+        const colourId = colourSlugToId.get(plan.colourSlug)
+        if (colourId === undefined) {
+          throw new Error(`No colour matches slug ${plan.colourSlug} for ${spec.title}`)
+        }
+
+        const existingMedia = await payload.find({
+          collection: 'media',
+          where: { filename: { equals: plan.filename } },
+          limit: 1,
+          depth: 0,
+          overrideAccess: true,
+        })
+
+        const found = existingMedia.docs[0]
+        if (found) {
+          galleryEntries.push({ image: asId(found.id), colour: colourId })
+          mediaReusedCount += 1
+          continue
+        }
+
+        const image = await renderPlannedImage(plan)
+        const created = await payload.create({
+          collection: 'media',
+          data: { alt: image.alt },
+          file: {
+            data: image.buffer,
+            name: image.filename,
+            mimetype: 'image/webp',
+            size: image.buffer.length,
+          },
+          depth: 0,
+          overrideAccess: true,
+        })
+        galleryEntries.push({ image: asId(created.id), colour: colourId })
+        mediaCreatedCount += 1
       }
 
-      const existingMedia = await payload.find({
-        collection: 'media',
-        where: { filename: { equals: image.filename } },
-        limit: 1,
+      // Rewritten on every run rather than left alone once set — cheap given the media rows
+      // themselves are reused, and it is what keeps the gallery in step if `PRODUCTS` ever
+      // changes a product's colour list.
+      await payload.update({
+        collection: 'products',
+        id: productId,
+        data: { gallery: galleryEntries },
         depth: 0,
         overrideAccess: true,
       })
-
-      const found = existingMedia.docs[0]
-      if (found) {
-        galleryEntries.push({ image: asId(found.id), colour: colourId })
-        mediaReusedCount += 1
-        continue
-      }
-
-      const created = await payload.create({
-        collection: 'media',
-        data: { alt: image.alt },
-        file: {
-          data: image.buffer,
-          name: image.filename,
-          mimetype: 'image/webp',
-          size: image.buffer.length,
-        },
-        depth: 0,
-        overrideAccess: true,
-      })
-      galleryEntries.push({ image: asId(created.id), colour: colourId })
-      mediaCreatedCount += 1
+    } catch (error) {
+      galleryFailures += 1
+      const reason = error instanceof Error ? (error.stack ?? error.message) : String(error)
+      payload.logger.warn(
+        `Sample imagery for “${spec.title}” could not be generated — seeding it without a ` +
+          `gallery and carrying on. ${reason}`,
+      )
     }
-
-    // Rewritten on every run rather than left alone once set — cheap given the media rows
-    // themselves are reused, and it is what keeps the gallery in step if `PRODUCTS` ever
-    // changes a product's colour list.
-    await payload.update({
-      collection: 'products',
-      id: productId,
-      data: { gallery: galleryEntries },
-      depth: 0,
-      overrideAccess: true,
-    })
   }
 
   // Reconcile every variant against its ledger.
@@ -465,61 +540,18 @@ async function seed(): Promise<void> {
     if ((await syncVariantStock(ledger, variant.id)) > 0) inStockCount += 1
   }
 
-  // One staff account per role, so the role matrix can be exercised by logging in.
-  for (const member of STAFF) {
-    await ensure(
-      payload,
-      'users',
-      { email: { equals: `${member.role}@threadline.example` } },
-      {
-        email: `${member.role}@threadline.example`,
-        password: SEED_PASSWORD,
-        name: member.name,
-        role: member.role,
-        isActive: true,
-      },
-    )
-  }
-
-  // A demo customer with an address, so checkout and tax have something to work against.
-  const customerId = await ensure(
-    payload,
-    'customers',
-    { email: { equals: 'demo@threadline.example' } },
-    {
-      email: 'demo@threadline.example',
-      password: SEED_PASSWORD,
-      name: 'Devi Krishnan',
-      phone: '9800000000',
-      whatsappOptIn: true,
-      emailVerified: true,
-    },
-  )
-
-  await ensure(
-    payload,
-    'addresses',
-    { and: [{ customer: { equals: customerId } }, { label: { equals: 'Home' } }] },
-    {
-      customer: customerId,
-      label: 'Home',
-      name: 'Devi Krishnan',
-      phone: '9800000000',
-      line1: '12 Sampige Road',
-      line2: 'Malleswaram',
-      city: 'Bengaluru',
-      state: 'Karnataka',
-      pincode: '560003',
-      country: 'India',
-      isDefault: true,
-    },
-  )
-
   payload.logger.info(
     `Seed complete — ${PRODUCTS.length} products, ${variantCount} new variants, ` +
       `${inStockCount}/${allVariants.docs.length} variants in stock, ${mediaCreatedCount} images generated ` +
       `(${mediaReusedCount} reused), ${STAFF_ROLES.length} staff accounts.`,
   )
+
+  if (galleryFailures > 0) {
+    payload.logger.warn(
+      `${galleryFailures} of ${PRODUCTS.length} products were seeded without imagery. Everything ` +
+        `else above is complete — re-run the seed once the cause in the warnings is fixed.`,
+    )
+  }
 }
 
 await seed()

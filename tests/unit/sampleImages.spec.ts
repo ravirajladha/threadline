@@ -4,14 +4,22 @@ import { describe, expect, it } from 'vitest'
 import {
   escapeSvgText,
   normaliseHex,
+  planSampleImages,
   readableTextColour,
   relativeLuminance,
+  renderPlannedImage,
   renderSampleImage,
   renderSampleImages,
   sampleImageSvg,
   SAMPLE_IMAGE_HEIGHT,
   SAMPLE_IMAGE_WIDTH,
 } from '@/seed/sampleImages'
+
+const THREE_COLOURS = [
+  { name: 'Midnight Navy', slug: 'midnight-navy', hex: '#1b2a4a' },
+  { name: 'Bone White', slug: 'bone-white', hex: '#f2ede4' },
+  { name: 'Olive', slug: 'olive', hex: '#5a6448' },
+]
 
 describe('escapeSvgText', () => {
   it('escapes every XML-significant character', () => {
@@ -147,16 +155,88 @@ describe('renderSampleImage', () => {
   })
 })
 
+describe('planSampleImages', () => {
+  it('names every image without rasterising any of them', () => {
+    const plans = planSampleImages({
+      productTitle: 'Kestrel Oxford Shirt',
+      productSlug: 'kestrel-oxford-shirt',
+      colours: THREE_COLOURS,
+    })
+
+    expect(plans).toHaveLength(6) // 3 colours × the default perColour of 2
+    expect(plans.every((plan) => plan.svg.startsWith('<svg'))).toBe(true)
+    expect(plans.every((plan) => !('buffer' in plan))).toBe(true)
+  })
+
+  // The seed matches an existing media row on the *planned* filename but wrote the row from a
+  // *rendered* one. If those two ever drift apart the lookup silently misses and a re-seed
+  // doubles every image in the catalog, so they are pinned together here.
+  it('plans exactly the filenames rendering produces', async () => {
+    const input = {
+      productTitle: 'Kestrel Oxford Shirt',
+      productSlug: 'kestrel-oxford-shirt',
+      colours: THREE_COLOURS,
+    }
+
+    const planned = planSampleImages(input).map((plan) => plan.filename)
+    const rendered = (await renderSampleImages(input)).map((image) => image.filename)
+
+    expect(planned).toEqual(rendered)
+  })
+
+  it('carries the alt text and colour slug through to the rendered image', async () => {
+    const plan = planSampleImages({
+      productTitle: 'Kestrel Oxford Shirt',
+      productSlug: 'kestrel-oxford-shirt',
+      colours: [THREE_COLOURS[0]!],
+      perColour: 1,
+    })[0]!
+
+    const image = await renderPlannedImage(plan)
+
+    expect(image.filename).toBe(plan.filename)
+    expect(image.alt).toBe('Kestrel Oxford Shirt in Midnight Navy')
+    expect(image.colourSlug).toBe('midnight-navy')
+  })
+
+  // Planning is the cheap step, so it is where a bad colour has to be caught — a RangeError here
+  // costs nothing, whereas the same mistake reaching `sharp` costs a raster to find out.
+  it('rejects a bad colour before any raster is attempted', () => {
+    expect(() =>
+      planSampleImages({
+        productTitle: 'Kestrel Oxford Shirt',
+        productSlug: 'kestrel-oxford-shirt',
+        colours: [{ name: 'Mystery', slug: 'mystery', hex: 'rebeccapurple' }],
+      }),
+    ).toThrow(RangeError)
+  })
+})
+
+describe('renderPlannedImage', () => {
+  // A raster failure is environment-dependent — a libvips without librsvg, a fontconfig with no
+  // fonts — and arrives from `sharp` with no idea which of a seed run's dozens of images caused
+  // it. The wrapper has to say which, and must not lose the original underneath.
+  it('names the image it failed on and keeps the underlying cause', async () => {
+    const broken = {
+      filename: 'kestrel-oxford-shirt-midnight-navy-1.webp',
+      alt: 'Kestrel Oxford Shirt in Midnight Navy',
+      colourSlug: 'midnight-navy',
+      svg: 'this is not an svg',
+    }
+
+    await expect(renderPlannedImage(broken)).rejects.toThrow(
+      /kestrel-oxford-shirt-midnight-navy-1\.webp/,
+    )
+    await expect(renderPlannedImage(broken)).rejects.toHaveProperty('cause')
+  })
+})
+
 describe('renderSampleImages', () => {
   it('renders perColour images for every colour, all uniquely named', async () => {
     const images = await renderSampleImages({
       productTitle: 'Kestrel Oxford Shirt',
       productSlug: 'kestrel-oxford-shirt',
-      colours: [
-        { name: 'Midnight Navy', slug: 'midnight-navy', hex: '#1b2a4a' },
-        { name: 'Bone White', slug: 'bone-white', hex: '#f2ede4' },
-        { name: 'Olive', slug: 'olive', hex: '#5a6448' },
-      ],
+      colours: THREE_COLOURS,
     })
 
     expect(images).toHaveLength(6) // 3 colours × the default perColour of 2
