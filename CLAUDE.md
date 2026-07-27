@@ -376,36 +376,36 @@ what it can act on.
 **Done:** verified against the dev database — all three adjustment modes, a lossless 76-row CSV
 round trip, and `support_agent` refused on every endpoint.
 
-### [ ] J3 — Storefront: browse
+### [x] J3 — Storefront: browse
 **Goal:** a customer can find a garment. Home → category → product, with filters that survive a
 refresh and a share, and a product page that answers "will this fit me" before it asks for a sale.
 
 Routes: `/` · `/shop` · `/c/[slug]` (category) · `/p/[slug]` (product).
 
-- [ ] `src/lib/catalog/filters.ts` — URL search params ⇄ typed `CatalogFilters`. Untrusted input:
+- [x] `src/lib/catalog/filters.ts` — URL search params ⇄ typed `CatalogFilters`. Untrusted input:
       garbage is dropped, never thrown on. Canonical serialisation (sorted, defaults omitted) so
       one filter set has one URL. Toggling a facet resets the page
-- [ ] `src/lib/catalog/query.ts` — filters → Payload `Where` + sort. Two-phase: variants match the
+- [x] `src/lib/catalog/query.ts` — filters → Payload `Where` + sort. Two-phase: variants match the
       facets, products are paginated by the resulting id set. Only `active` products, `isActive`
       variants. Price handles the variant-overrides-mrp fallback
-- [ ] `src/lib/catalog/variantView.ts` — depth-populated variants → flat, serialisable view models.
+- [x] `src/lib/catalog/variantView.ts` — depth-populated variants → flat, serialisable view models.
       Availability is `stockQty − reservedQty`, floored at zero
-- [ ] `src/lib/catalog/productView.ts` — colour swatches, size pills (in `sortOrder`, sold-out
+- [x] `src/lib/catalog/productView.ts` — colour swatches, size pills (in `sortOrder`, sold-out
       flagged not hidden), default colour selection, price range, "Only N left"
-- [ ] `src/lib/catalog/gallery.ts` — images for the selected colour, with a defined fallback chain
-- [ ] `src/lib/catalog/breadcrumbs.ts` — category ancestry → crumbs, cycle-safe
-- [ ] `src/lib/seo/metadata.ts` — Next `Metadata` from a doc + its `seo` override; filtered
+- [x] `src/lib/catalog/gallery.ts` — images for the selected colour, with a defined fallback chain
+- [x] `src/lib/catalog/breadcrumbs.ts` — category ancestry → crumbs, cycle-safe
+- [x] `src/lib/seo/metadata.ts` — Next `Metadata` from a doc + its `seo` override; filtered
       listings canonicalise to the clean category URL
-- [ ] `src/lib/seo/jsonLd.ts` — Product · BreadcrumbList · Website builders, plus the `<` escaping
+- [x] `src/lib/seo/jsonLd.ts` — Product · BreadcrumbList · Website builders, plus the `<` escaping
       that makes embedding them in a `<script>` safe (A03)
-- [ ] `src/lib/catalog/payloadCatalog.ts` — the Payload port behind a typed `CatalogPort` interface
-- [ ] Components: `layout/` Header · Footer · Breadcrumbs · `ui/` Price · Swatch · Modal ·
+- [x] `src/lib/catalog/payloadCatalog.ts` — the Payload port behind a typed `CatalogPort` interface
+- [x] Components: `layout/` Header · Footer · Breadcrumbs · `ui/` Price · Swatch · Modal ·
       `catalog/` FilterRail · SortSelect · ActiveFilters · Pagination · ProductGrid ·
       `product/` ProductCard · Gallery · VariantPicker · SizeChartModal
-- [ ] Security headers in `next.config.ts` (A05) — the first stage that serves public pages
-- [ ] OWASP pass: A03 JSON-LD escaped at the boundary, A04 stock read server-side and never from
+- [x] Security headers in `next.config.ts` (A05) — the first stage that serves public pages
+- [x] OWASP pass: A03 JSON-LD escaped at the boundary, A04 stock read server-side and never from
       the query string, A05 headers + no draft/archived product reachable by slug
-- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §8 written
+- [x] `npm run check` green — 746 unit tests; `docs/ARCHITECTURE.md` §8 written
 
 **Done:** every filter combination is a shareable URL, a sold-out size is visible and disabled, and
 each page carries metadata plus valid structured data.
@@ -519,3 +519,36 @@ Every one keeps its stub, which is what the test suite and local development con
   components that do not exist. Next session: land those components, then run `npm run check`
   until green and mark J3 `[x]`. `npm run check` has NOT been run this session; `npm test` is
   green at 741.
+- 2026-07-27 [J3, part 2 of 2]: **Stage closed.** `npm run check` fully green — typecheck, lint and
+  746 unit tests (up from 741). `docs/ARCHITECTURE.md` §8 written; the pending sections renumbered
+  around it.
+  Three defects cleared. **The seed could not create a login**, because staff accounts were the
+  last thing it did and sample-image generation — the slowest, most optional and most
+  failure-prone step, being the only one that leaves the database — sat in front of them inside
+  the product loop. Accounts now run first, before the catalog exists at all, and the gallery
+  step is wrapped per product: a failure names the product, warns, and the run carries on, with a
+  count in the closing summary. A store with no placeholder images is usable; a store nobody can
+  log into is not.
+  On the throw itself, honestly: **it does not reproduce here.** Every one of the 32 images
+  rasterises, `sharp` reports rsvg 2.59.91 and the text renders; a media upload through the real
+  Payload pipeline succeeds; and the dev database already holds all 32 media rows, six products,
+  76 variants and all five staff accounts. So the ordering fix stands on its own merits rather
+  than on a diagnosis. What did come out of looking is a real inefficiency and a real blind spot:
+  the seed rendered every image *before* checking whether the media row already existed, so a
+  re-run paid for 32 rasters it then discarded — which is most of why a re-seed took minutes.
+  `planSampleImages` now names and composes an image for the cost of a string, and
+  `renderPlannedImage` is called only once the lookup has proved the raster is needed. A test
+  pins planned filenames to rendered ones, because a drift between the two would silently double
+  every gallery. `rasterise` also names the image it failed on and keeps the original as `cause`
+  — a bare `sharp` message in a 32-image run says nothing about which one.
+  **Four lint errors**, all the same mistake: `useEffect` copying props into state. Fixed by
+  deriving during render, not by disabling the rule. `Gallery` tracks the chosen image *id* rather
+  than its index, so a colour change simply stops matching; `VariantPicker` keeps the customer's
+  explicit size and resolves the effective one against the current pill set, with quantity clamped
+  to what is actually available; `FilterRail`'s price box is remounted by `key`; `ThemeToggle` reads
+  the DOM and `localStorage` through `useSyncExternalStore`, which is what that hook is for and
+  which also makes the icon follow a live OS theme change. Three stale `react/no-danger`
+  directives removed, reasoning comments kept.
+  **Next: J4 — cart and checkout**, against a `StubGateway` per §2 "Build order — stub the outside
+  world first". Signature verification, idempotency by event id and stock reservation are all
+  built for real against the stub; Razorpay itself is J11.

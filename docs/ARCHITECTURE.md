@@ -185,31 +185,104 @@ somebody has to do something today: low stock, orders awaiting action, open tick
 awaiting moderation. A Server Component, gated on the same matrix, so a `marketing` user sees the
 catalog and order counts and nothing about support.
 
-## 8. Payments — Razorpay
+## 8. Storefront browse — catalog and SEO
 
-_pending (J4)_
+Built at J3. Four public routes — `/`, `/shop`, `/c/[slug]`, `/p/[slug]` — over a catalog layer in
+`src/lib/catalog/` that the App Router only ever renders the output of. No page fetches from
+Payload directly, and no component decides what is in stock.
 
-## 9. Shipping — Shiprocket
+**The port is the contract.** `src/lib/catalog/types.ts` defines `CatalogPort` — the shape of
+everything a storefront page can ask for — and every other module in the folder is written against
+it. `payloadCatalog.ts` is the only implementation that knows Payload exists, and `server.ts`
+wraps it in React's `cache` so one request resolves it once. The rest of the folder is pure
+functions over plain data, which is why the whole browse experience is unit-testable without a
+database and why J9 can replace the read strategy without touching a page.
+
+**Filters are a URL, not a state object.** `filters.ts` parses search params into a typed
+`CatalogFilters` and serialises it back. Two properties matter. The input is hostile — a query
+string is whatever someone pasted — so an unparseable page number, an unknown sort key or a
+negative price is **dropped, never thrown on**; a filter rail that 500s on a mangled link is worse
+than one that ignores it. And serialisation is **canonical**: keys in a fixed order, defaults
+omitted, values sorted. One filter set therefore has exactly one URL, which is what makes a
+filtered listing shareable, cacheable and safe to declare as its own canonical.
+
+**Facets constrain a variant, not a product.** This is the decision the rest of `select.ts` falls
+out of. "M" plus "blue" has to mean *a blue M exists* — not that the product has an M somewhere
+and a blue somewhere. So the facets run over the variant list and a product survives only if
+something is left of it. Getting this wrong is the difference between a filter that works and one
+that confidently offers a shirt in a combination nobody can buy.
+
+**A facet is never counted against itself.** Each facet's counts are computed with that facet's own
+selections lifted, and every other filter still applied. Without it, ticking "Navy" makes every
+other colour read zero and the rail becomes a dead end — the familiar broken filter that can only
+ever be narrowed. `computeFacets` does this once per request rather than per checkbox.
+
+**One catalog read, not a query per facet.** `loadCatalogIndex` pulls the active catalog once and
+`select.ts` filters, facets, sorts and paginates it in memory. This is a deliberate trade, not an
+oversight: a variant's price falls back to its product's MRP when it does not override it, and SQL
+cannot order by a value that is defined by that fallback without a join and a coalesce per row —
+so pushing sort down to the database would mean modelling the fallback twice, in two languages,
+and keeping them in agreement. In-memory selection has one source of truth for price and a
+ceiling; `loadCatalogIndex` is the single seam where J9 replaces it once the catalog outgrows it.
+
+**View models flatten depth.** `variantView.ts` and `productView.ts` turn depth-populated Payload
+documents into flat, serialisable views a Server Component can hand to a client one. Availability
+is `stockQty − reservedQty` floored at zero, computed **server-side, every time** — never read
+from a query string and never trusted from the client (OWASP A04). A sold-out size arrives as a
+pill with `isAvailable: false`, because it is rendered visible and struck through rather than
+hidden: a customer who cannot find their size assumes the shop does not stock it, and a customer
+who can see it sold out is someone to notify when it returns.
+
+**Metadata and structured data are builders, not decoration.** `seo/metadata.ts` composes Next's
+`Metadata` from a document plus its own `seo` override, and a filtered listing **canonicalises to
+the clean category URL** — every combination of facets is one page's worth of duplicate content
+otherwise. `seo/jsonLd.ts` builds Product, BreadcrumbList, WebSite and Organization objects.
+
+`escapeJsonLd` is the security boundary and the reason `components/seo/JsonLd.tsx` is the only
+component in the storefront allowed to use `dangerouslySetInnerHTML`. Inside a `<script>` the HTML
+parser is not reading JSON — it is watching for the string `</script`, and it ends the element the
+moment it sees one. A product title containing `</script><img src=x onerror=…>` would otherwise
+break out of the data block and execute, which is stored XSS (OWASP A03). Escaping `<`, `>` and
+`&` to their `\uXXXX` forms is valid inside a JSON string, so consumers parse the same object.
+
+**Security headers** land in `next.config.ts` at this stage, because J3 is the first that serves a
+public page: CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy` and `frame-ancestors` (OWASP
+A05). Slug routes resolve only `active` products, so a draft or archived garment is a 404 rather
+than a page reachable by anyone who guesses the URL.
+
+**Components hold no business logic.** `ListingView` composes the rail, sort, active-filter chips,
+grid and pagination; every one of them is handed data and a callback. Interactivity is confined
+to four `"use client"` components, and each of them derives what it shows during render rather
+than synchronising it in an effect — the gallery tracks the chosen *image id*, not its index, so a
+colour change stops matching and resets on its own; the variant picker keeps the customer's
+explicit size and resolves the effective one against the current pill set. Effects that copy
+props into state are the standard source of the cascading second render, and none survive here.
+
+## 9. Payments — Razorpay
+
+_pending (J4 stub, J11 live)_
+
+## 10. Shipping — Shiprocket
+
+_pending (J5 stub, J11 live)_
+
+## 11. Scheduler
 
 _pending (J5)_
 
-## 10. Scheduler
+## 12. Notifications — email and WhatsApp
 
-_pending (J5)_
+_pending (J6 stub, J11 live)_
 
-## 11. Notifications — email and WhatsApp
+## 13. Customer support and AI assistant
 
-_pending (J6)_
+_pending (J7 tickets, J11 assistant)_
 
-## 12. Customer support and AI assistant
+## 14. SEO — sitemap, OG images and Core Web Vitals
 
-_pending (J7)_
+_pending (J9). The metadata and structured-data builders are §8._
 
-## 13. SEO
-
-_pending (J9)_
-
-## 14. Deployment
+## 15. Deployment
 
 _pending (J10)_
 
@@ -228,6 +301,11 @@ admin internals (`.dashboard`) are version-sensitive — expect to revisit them 
 
 ## Changelog
 
+- **2026-07-27 (J3)** — Storefront browse. `src/lib/catalog/` behind a `CatalogPort` interface —
+  URL-canonical filters, variant-level faceting, in-memory selection over one cached catalog read;
+  `src/lib/seo/` metadata and JSON-LD builders with boundary escaping; security headers and CSP;
+  the four public routes and their components. Seed imagery made non-fatal and account creation
+  moved ahead of it. 746 unit tests.
 - **2026-07-27 (J2)** — Admin usability. Bulk variant generator, stock adjustment through the
   ledger, catalog CSV import/export with dry-run, role-aware nav, dashboard counters. Endpoints
   gained a shared role guard and error boundary. 351 unit tests.
