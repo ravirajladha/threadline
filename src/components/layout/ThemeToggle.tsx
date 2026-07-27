@@ -2,10 +2,11 @@
 // Interactive: flips the explicit theme choice, persists it, and reflects the active theme in
 // the icon it shows.
 
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { MoonIcon, SunIcon } from '../ui/icons'
 
 const STORAGE_KEY = 'theme'
+const PREFERS_DARK = '(prefers-color-scheme: dark)'
 type StoredTheme = 'light' | 'dark'
 
 function isStoredTheme(value: string | null): value is StoredTheme {
@@ -23,37 +24,62 @@ function isStoredTheme(value: string | null): value is StoredTheme {
 const NO_FLASH_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(STORAGE_KEY)});if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`
 
 export function ThemeScript(): React.ReactElement {
-  // eslint-disable-next-line react/no-danger -- static script, no user input, see comment above.
   return <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
 }
 
+/**
+ * The active theme lives in the DOM and in `localStorage`, not in React — `NO_FLASH_SCRIPT` has
+ * already set it before this component exists. So it is read as an external store rather than
+ * copied into state on mount: `useSyncExternalStore` is the hook built for exactly that, it
+ * gives the server a defined snapshot instead of a hydration mismatch, and it removes the
+ * mount-time `setState` that a plain effect would need.
+ */
 function readActiveTheme(): StoredTheme {
-  if (typeof document === 'undefined') return 'light'
   const explicit = document.documentElement.getAttribute('data-theme')
   if (isStoredTheme(explicit)) return explicit
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
-  }
+  return window.matchMedia(PREFERS_DARK).matches ? 'dark' : 'light'
+}
+
+/** The server has no DOM and no OS preference to read, so it renders the default. */
+function readServerTheme(): StoredTheme {
   return 'light'
+}
+
+const listeners = new Set<() => void>()
+
+/** Notifies subscribers of a change React cannot observe — our own toggle, or another tab. */
+function emitThemeChange(): void {
+  for (const listener of listeners) listener()
+}
+
+function subscribeToTheme(listener: () => void): () => void {
+  listeners.add(listener)
+  const media = window.matchMedia(PREFERS_DARK)
+  // The OS preference matters only while no explicit choice is stored, but subscribing
+  // unconditionally is what makes the icon follow a system switch in that state.
+  media.addEventListener('change', emitThemeChange)
+  window.addEventListener('storage', emitThemeChange)
+
+  return () => {
+    listeners.delete(listener)
+    media.removeEventListener('change', emitThemeChange)
+    window.removeEventListener('storage', emitThemeChange)
+  }
 }
 
 /** A light/dark toggle. With no explicit choice yet, it follows the OS until the user picks. */
 export function ThemeToggle(): React.ReactElement {
-  const [theme, setTheme] = useState<StoredTheme>('light')
-
-  useEffect(() => {
-    setTheme(readActiveTheme())
-  }, [])
+  const theme = useSyncExternalStore(subscribeToTheme, readActiveTheme, readServerTheme)
 
   const toggle = (): void => {
     const next: StoredTheme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
     document.documentElement.setAttribute('data-theme', next)
     try {
       window.localStorage.setItem(STORAGE_KEY, next)
     } catch {
       // Private-browsing storage denial should not break the toggle itself.
     }
+    emitThemeChange()
   }
 
   return (

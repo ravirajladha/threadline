@@ -1,7 +1,7 @@
 'use client'
 // Interactive: thumbnail selection and arrow-key navigation change which image is the main one.
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
 import type { ImageView } from '@/lib/catalog/types'
 
@@ -20,12 +20,10 @@ export interface GalleryProps {
 }
 
 export function Gallery({ images, productTitle }: GalleryProps): React.ReactElement {
-  const [activeIndex, setActiveIndex] = useState(0)
-  const signature = images.map((image) => image.id).join(',')
-
-  useEffect(() => {
-    setActiveIndex(0)
-  }, [signature])
+  // The chosen *image*, not its position. A colour change replaces the whole list, and an index
+  // survives that change while meaning something entirely different — an id simply stops
+  // matching, which is the reset, derived during render rather than chased in an effect.
+  const [activeImageId, setActiveImageId] = useState<number | null>(null)
 
   if (images.length === 0) {
     return (
@@ -40,15 +38,14 @@ export function Gallery({ images, productTitle }: GalleryProps): React.ReactElem
     )
   }
 
-  const boundedIndex = Math.min(activeIndex, images.length - 1)
-  const active = images[boundedIndex]
+  // `findIndex` returns -1 for an id that belongs to a colour the customer has since switched
+  // away from, so the floor at zero is what lands them on the new colour's first image.
+  const activeIndex = Math.max(0, images.findIndex((image) => image.id === activeImageId))
+  const active = images[activeIndex]
 
   const step = (delta: number): void => {
-    setActiveIndex((current) => {
-      const next = current + delta
-      if (next < 0 || next >= images.length) return current
-      return next
-    })
+    const target = images[activeIndex + delta]
+    if (target) setActiveImageId(target.id)
   }
 
   return (
@@ -72,11 +69,11 @@ export function Gallery({ images, productTitle }: GalleryProps): React.ReactElem
             key={image.id}
             type="button"
             role="option"
-            aria-selected={index === boundedIndex}
+            aria-selected={index === activeIndex}
             aria-label={`Image ${index + 1} of ${images.length}`}
-            onClick={() => setActiveIndex(index)}
+            onClick={() => setActiveImageId(image.id)}
             className={`border-border-strong relative size-16 shrink-0 overflow-hidden rounded-[--radius-control] border transition-colors duration-fast ease-out md:size-20 ${
-              index === boundedIndex ? 'ring-accent ring-2' : ''
+              index === activeIndex ? 'ring-accent ring-2' : ''
             }`}
           >
             <Image src={image.url} alt="" fill sizes="80px" className="object-cover" />

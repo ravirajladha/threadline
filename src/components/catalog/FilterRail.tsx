@@ -2,7 +2,7 @@
 // Interactive: every facet control writes straight to the URL; the sheet's own open state and
 // the price inputs' in-progress text are the only things kept locally.
 
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { CatalogFacets, CatalogFilters, FacetValue } from '@/lib/catalog/types'
 import {
@@ -82,15 +82,13 @@ function PriceSection({
   filters: CatalogFilters
   onApply: (minPaise: number | null, maxPaise: number | null) => void
 }): React.ReactElement {
+  // Half-typed input is local — it becomes a filter only on submit. Re-seeding it from the URL
+  // is a remount, driven by the `key` this is rendered with, rather than an effect writing over
+  // state React has just rendered.
   const [minValue, setMinValue] = useState(filters.minPrice !== null ? String(filters.minPrice / 100) : '')
   const [maxValue, setMaxValue] = useState(filters.maxPrice !== null ? String(filters.maxPrice / 100) : '')
   const minId = useId()
   const maxId = useId()
-
-  useEffect(() => {
-    setMinValue(filters.minPrice !== null ? String(filters.minPrice / 100) : '')
-    setMaxValue(filters.maxPrice !== null ? String(filters.maxPrice / 100) : '')
-  }, [filters.minPrice, filters.maxPrice])
 
   return (
     <div className="border-border border-b py-4">
@@ -164,7 +162,7 @@ function RailContents({
       <FacetSection title="Category" facet="categories" values={facets.categories} filters={filters} onToggle={onToggle} />
       <FacetSection title="Size" facet="sizes" values={facets.sizes} filters={filters} onToggle={onToggle} />
       <FacetSection title="Colour" facet="colours" values={facets.colours} filters={filters} onToggle={onToggle} />
-      <PriceSection filters={filters} onApply={onPriceApply} />
+      <PriceSection key={`${filters.minPrice}-${filters.maxPrice}`} filters={filters} onApply={onPriceApply} />
       <label className="text-fg flex cursor-pointer items-center gap-2 py-4 text-sm">
         <input
           type="checkbox"

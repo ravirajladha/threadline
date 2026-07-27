@@ -1,7 +1,7 @@
 'use client'
 // Interactive: owns colour, size and quantity selection ahead of a J4 cart to add them to.
 
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import type { ProductDetailView, SizePillView } from '@/lib/catalog/types'
 import { Swatch } from '../ui/Swatch'
 import { MinusIcon, PlusIcon } from '../ui/icons'
@@ -36,23 +36,26 @@ export function VariantPicker({
   const colourGroupName = useId()
   const sizeGroupName = useId()
 
-  const [selectedSizeId, setSelectedSizeId] = useState<number | null>(null)
-  const [quantity, setQuantity] = useState(1)
+  // Only what the customer actually chose is stored. A colour change hands back a fresh set of
+  // pills, and a size the previous colour offered may not exist in the new one — but that is a
+  // question the render already has the answer to, so resolving it here rather than
+  // resynchronising state in an effect avoids a second render on every swatch click.
+  const [chosenSizeId, setChosenSizeId] = useState<number | null>(null)
+  const [chosenQuantity, setChosenQuantity] = useState(1)
   const [sizeChartOpen, setSizeChartOpen] = useState(false)
 
-  // A colour change hands back a fresh set of pills for the new colour — pick a sensible
-  // default from it rather than carrying over a size id that may not exist in this colour.
-  const pillsSignature = sizePills.map((pill) => pill.sizeId).join(',')
-  useEffect(() => {
-    const firstAvailable = sizePills.find((pill) => pill.isAvailable)
-    setSelectedSizeId(firstAvailable?.sizeId ?? sizePills[0]?.sizeId ?? null)
-    setQuantity(1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the pill set, not the array reference.
-  }, [pillsSignature])
+  // The effective selection: the customer's own pick while it is still on offer, otherwise the
+  // first size that can actually be bought, otherwise the first pill — a sold-out one is a valid
+  // landing place, since it is what turns the CTA into "Notify me" rather than a dead end.
+  const chosenPill = sizePills.find((pill) => pill.sizeId === chosenSizeId) ?? null
+  const selectedPill = chosenPill ?? sizePills.find((pill) => pill.isAvailable) ?? sizePills[0] ?? null
+  const selectedSizeId = selectedPill?.sizeId ?? null
 
-  const selectedPill = sizePills.find((pill) => pill.sizeId === selectedSizeId) ?? null
   const isSoldOutPick = selectedPill !== null && (!selectedPill.isAvailable || selectedPill.variantId === null)
   const maxQuantity = selectedPill && selectedPill.isAvailable ? Math.max(1, selectedPill.availableQty) : 1
+  // Clamped rather than reset, for the same reason: switching to a colour with two left in this
+  // size must not leave a five in the box, and clamping expresses that without an effect.
+  const quantity = Math.min(chosenQuantity, maxQuantity)
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,7 +105,7 @@ export function VariantPicker({
                     value={pill.sizeId}
                     checked={checked}
                     aria-disabled={unavailable}
-                    onChange={() => setSelectedSizeId(pill.sizeId)}
+                    onChange={() => setChosenSizeId(pill.sizeId)}
                     className="sr-only"
                   />
                   <span
@@ -129,7 +132,7 @@ export function VariantPicker({
           <div className="border-border-strong inline-flex items-center rounded-[--radius-control] border">
             <button
               type="button"
-              onClick={() => setQuantity((qty) => Math.max(1, qty - 1))}
+              onClick={() => setChosenQuantity(Math.max(1, quantity - 1))}
               disabled={quantity <= 1}
               aria-label="Decrease quantity"
               className="text-fg p-2 disabled:cursor-not-allowed disabled:opacity-40"
@@ -145,14 +148,14 @@ export function VariantPicker({
               onChange={(event) => {
                 const parsed = Number(event.target.value)
                 if (Number.isFinite(parsed)) {
-                  setQuantity(Math.min(maxQuantity, Math.max(1, Math.round(parsed))))
+                  setChosenQuantity(Math.min(maxQuantity, Math.max(1, Math.round(parsed))))
                 }
               }}
               className="text-fg w-12 border-0 bg-transparent text-center text-sm"
             />
             <button
               type="button"
-              onClick={() => setQuantity((qty) => Math.min(maxQuantity, qty + 1))}
+              onClick={() => setChosenQuantity(Math.min(maxQuantity, quantity + 1))}
               disabled={quantity >= maxQuantity}
               aria-label="Increase quantity"
               className="text-fg p-2 disabled:cursor-not-allowed disabled:opacity-40"
