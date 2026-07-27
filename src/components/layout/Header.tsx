@@ -4,9 +4,12 @@ import { MobileNav } from './MobileNav'
 import { BagIcon, SearchIcon, UserIcon } from '../ui/icons'
 
 /**
- * The storefront's one persistent chrome. Search, account and cart are rendered now as inert
- * placeholders — icons with no handler — purely so later stages (J4 cart, J8 account) slot in
- * without reshaping the header around them.
+ * The storefront's one persistent chrome. Search and account remain inert placeholders until J8;
+ * the bag is live from J4 and carries the session's unit count.
+ *
+ * The count is a **prop, not a fetch**. The header is a server component rendered inside the
+ * storefront layout, which already reads the cart once per request — having it read again here
+ * would double every page's cart query for a number the layout is holding anyway.
  *
  * The scroll-triggered hairline is the one piece of behaviour a server component cannot own
  * outright. Rather than promoting the whole header to a client component for one border, it
@@ -16,11 +19,16 @@ import { BagIcon, SearchIcon, UserIcon } from '../ui/icons'
 
 const HAIRLINE_SCRIPT = `(function(){var h=document.getElementById("site-header");if(!h)return;var onScroll=function(){h.setAttribute("data-scrolled",window.scrollY>4?"true":"false");};onScroll();window.addEventListener("scroll",onScroll,{passive:true});})();`
 
+/** Past this the badge reads "9+" rather than stretching the icon out of shape. */
+const MAX_BADGE_COUNT = 9
+
 export interface HeaderProps {
   categories: CategoryView[]
+  /** Units in the bag. Zero renders the icon with no badge. */
+  bagCount?: number
 }
 
-export function Header({ categories }: HeaderProps): React.ReactElement {
+export function Header({ categories, bagCount = 0 }: HeaderProps): React.ReactElement {
   return (
     <header
       id="site-header"
@@ -74,14 +82,23 @@ export function Header({ categories }: HeaderProps): React.ReactElement {
           >
             <UserIcon className="size-5" />
           </button>
-          <button
-            type="button"
-            disabled
-            aria-label="Cart (coming soon)"
-            className="text-fg-muted rounded-[--radius-control] p-2 disabled:cursor-not-allowed disabled:opacity-50"
+          <Link
+            href="/cart"
+            // The count is in the label rather than only in the badge, so it is announced on
+            // focus instead of being a number a screen reader reads out with no context.
+            aria-label={bagCount > 0 ? `Bag, ${bagCount} item${bagCount === 1 ? '' : 's'}` : 'Bag, empty'}
+            className="text-fg-muted hover:text-fg relative rounded-[--radius-control] p-2 transition-colors duration-fast ease-out"
           >
             <BagIcon className="size-5" />
-          </button>
+            {bagCount > 0 ? (
+              <span
+                aria-hidden="true"
+                className="bg-accent text-accent-fg absolute top-0.5 right-0.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-medium"
+              >
+                {bagCount > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : bagCount}
+              </span>
+            ) : null}
+          </Link>
         </div>
       </div>
 

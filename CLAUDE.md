@@ -462,14 +462,27 @@ Routes: `/cart` · `/checkout` · `/checkout/success`. API: cart mutations · `/
 - [ ] `factory.ts` — selects by environment and throws at startup if production has no real gateway
 
 **Surfaces**
-- [ ] Cart mutation endpoints, rate-limited, each re-checking ownership of the session cart
-- [ ] `/api/webhooks/payments` — verify signature → parse → idempotent apply. Unverified is a 400
+- [x] `src/lib/http/` — `rateLimit.ts` (sliding-window limiter, injected clock) and `route.ts`
+      (error boundary, body narrowing, limit enforcement) — the App Router counterpart to
+      `endpoints/guards.ts`
+- [x] `/api/cart` — one endpoint, action-discriminated, rate-limited, cart identified only by the
+      session cookie so another cart is not expressible in the request
+- [x] `/api/checkout` — re-prices with the delivery state, reconciles, holds stock, writes the
+      order. Marks nothing paid
+- [x] `/api/webhooks/payments` — verify signature → parse → idempotent apply. Unverified is a 400
       and nothing else
-- [ ] Components: `cart/` CartLine · CartSummary · CartView · `checkout/` AddressForm ·
-      OrderSummary · CouponBox · PaymentStep, and the three routes
+- [x] `/api/payments/simulate` — development only, feeds a genuinely signed webhook through the
+      real handler so the local happy path runs over verification rather than around it
+- [x] Components: `cart/` CartLine · CartSummary · CartView · `checkout/` AddressForm ·
+      OrderSummary · CouponBox · PaymentStep · StubPaymentPanel
+- [x] Routes: `/cart` · `/checkout` · `/checkout/pay` · `/checkout/success` · `/checkout/failed`
+- [x] Storefront chrome finally mounted — `Header` (live bag count) and `Footer` were built in J3
+      but never rendered; `(storefront)/layout.tsx` now carries them plus `ThemeScript` and a skip
+      link. Add-to-bag wired in `VariantPicker`; `/` replaced the J0 placeholder
 - [ ] OWASP pass: A01 a cart and an order are readable only by their owner or staff, A04 server
       re-prices and reserves, A08 signature + idempotency by event id, A09 every payment event logged
-- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §9 written
+- [x] `npm run check` green — 1101 unit tests; `npm run build` green
+- [ ] `docs/ARCHITECTURE.md` §9 written
 
 ### [ ] J5 — Orders & fulfilment + scheduler *(stubbed courier)*
 Order status machine, `ShippingProvider` interface with a **`StubShippingProvider`** that
@@ -607,3 +620,42 @@ Every one keeps its stub, which is what the test suite and local development con
   **Next: J4 — cart and checkout**, against a `StubGateway` per §2 "Build order — stub the outside
   world first". Signature verification, idempotency by event id and stock reservation are all
   built for real against the stub; Razorpay itself is J11.
+- 2026-07-27 [J4, surfaces]: **The journey is walkable end to end.** `npm run check` green at 1101
+  unit tests (up from 1072) and `npm run build` green across all 18 routes. The stage is *not*
+  marked `[x]` — see the two open items above.
+  The session's finding, and it was not a small one: **`Header` and `Footer` had never been
+  rendered.** J3 built them, `(storefront)/layout.tsx` still returned a bare `<main>`, and nothing
+  grepped for them. So every page since J3 has shipped with no navigation, no footer and no
+  `ThemeScript` — which is the flash of the wrong theme on every cold load, and most likely the
+  real reason the deployed site reads as unstyled rather than anything to do with the tokens.
+  The layout now carries all three plus a skip link. `VariantPicker`'s buy button, which read
+  "Coming in J4" and was `disabled`, now adds to the bag; without it `/cart` would have been a
+  permanently empty page.
+  New in `src/lib/http/`: a **sliding-window** rate limiter rather than a fixed one, because a
+  fixed window lets a caller spend one allowance at 0:59 and the next at 1:01 — double the rate
+  across exactly the boundary a script will find. Clock injected, so the boundary case is a test
+  rather than a sleep.
+  `postCartAction` moved from `CartView.tsx` to `lib/cart/client.ts`, which its own comment had
+  asked for on the third caller; add-to-bag was the third.
+  Two defects the tests caught rather than production. **`toQty` used `Number(value)`**, which
+  coerces `null`, `''` and `false` to *zero* — and zero is the cart's spelling of "remove this
+  line", so a `setQty` with a missing quantity would have silently deleted a customer's line
+  instead of returning a 400. The route's own comment claimed this was handled; it was not, until
+  the test asserted it. And **`recentOrder.ts` shipped a second order-number regex** expecting
+  `YYYYMMDD` when the real format is `YYMMDD` — it would have rejected every genuine order number
+  and shown "no recent order" after every successful checkout. Now defers to
+  `orderNumber.isOrderNumber`.
+  Design decisions worth keeping. **An order number never authorises reading an order** — it is a
+  date plus a small sequence, so counting upwards would hand out strangers' addresses. The
+  confirmation pages read an httpOnly `tl_order` cookie and never the URL, which makes the obvious
+  attack unexpressible rather than merely blocked. `SameSite=Lax` on it deliberately, because
+  `Strict` is withheld on the cross-site return from a gateway — the confirmation page would come
+  up blank for everyone who actually paid. And `/api/payments/simulate` does **not** call
+  `applyPaymentEvent`; it signs a body for real and hands it to the webhook route, so the local
+  flow exercises verification instead of bypassing it.
+  `.env.example` documented `RAZORPAY_WEBHOOK_SECRET`, which nothing reads. The factory reads
+  `PAYMENT_PROVIDER` and `PAYMENT_WEBHOOK_SECRET`; both are now documented.
+  **Exact next action:** run the OWASP A01/A04/A08/A09 pass over the four new routes, then write
+  `docs/ARCHITECTURE.md` §9, then mark J4 `[x]`. Owner to run `npm run seed` (schema unchanged, so
+  only if the catalog is stale) and `npm run test:e2e` — no e2e spec covers cart → checkout yet,
+  so that suite still only proves J3.

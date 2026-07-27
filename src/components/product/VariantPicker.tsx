@@ -1,7 +1,10 @@
 'use client'
-// Interactive: owns colour, size and quantity selection ahead of a J4 cart to add them to.
+// Interactive: owns colour, size and quantity selection, and puts the result in the bag.
 
 import { useId, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { postCartAction } from '@/lib/cart/client'
 import type { ProductDetailView, SizePillView } from '@/lib/catalog/types'
 import { Swatch } from '../ui/Swatch'
 import { MinusIcon, PlusIcon } from '../ui/icons'
@@ -44,6 +47,13 @@ export function VariantPicker({
   const [chosenQuantity, setChosenQuantity] = useState(1)
   const [sizeChartOpen, setSizeChartOpen] = useState(false)
 
+  const router = useRouter()
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  // Set on success and cleared by the next selection change, so the confirmation belongs to the
+  // thing that was actually added rather than lingering over a different size.
+  const [added, setAdded] = useState(false)
+
   // The effective selection: the customer's own pick while it is still on offer, otherwise the
   // first size that can actually be bought, otherwise the first pill — a sold-out one is a valid
   // landing place, since it is what turns the CTA into "Notify me" rather than a dead end.
@@ -57,6 +67,43 @@ export function VariantPicker({
   // size must not leave a five in the box, and clamping expresses that without an effect.
   const quantity = Math.min(chosenQuantity, maxQuantity)
 
+  /**
+   * Clear the outcome of the last add whenever the selection moves.
+   *
+   * Called from the change handlers rather than done in an effect: "the confirmation is stale
+   * because the customer picked something else" is a consequence of an event, and expressing it
+   * as an event handler is what keeps this component free of the props-into-state effect that
+   * failed lint in J3.
+   */
+  const resetOutcome = (): void => {
+    setAdded(false)
+    setAddError(null)
+  }
+
+  const handleAddToBag = async (): Promise<void> => {
+    if (selectedPill?.variantId === null || selectedPill === null) return
+
+    setAdding(true)
+    resetOutcome()
+
+    const result = await postCartAction({
+      action: 'add',
+      variantId: selectedPill.variantId,
+      qty: quantity,
+    })
+
+    if (result.ok) {
+      setAdded(true)
+      // The header's bag count is a server-rendered number and is now wrong. Refreshing the
+      // route re-runs the layout, which is what updates it — the badge is not client state.
+      router.refresh()
+    } else {
+      setAddError(result.error)
+    }
+
+    setAdding(false)
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {swatches.length > 0 ? (
@@ -69,7 +116,10 @@ export function VariantPicker({
                 swatch={swatch}
                 name={colourGroupName}
                 selected={swatch.id === selectedColourId}
-                onSelect={onColourChange}
+                onSelect={(colourId) => {
+                  resetOutcome()
+                  onColourChange(colourId)
+                }}
               />
             ))}
           </div>
@@ -105,7 +155,10 @@ export function VariantPicker({
                     value={pill.sizeId}
                     checked={checked}
                     aria-disabled={unavailable}
-                    onChange={() => setChosenSizeId(pill.sizeId)}
+                    onChange={() => {
+                      resetOutcome()
+                      setChosenSizeId(pill.sizeId)
+                    }}
                     className="sr-only"
                   />
                   <span
@@ -166,13 +219,34 @@ export function VariantPicker({
         </div>
       ) : null}
 
-      <button
-        type="button"
-        disabled
-        className="bg-accent text-accent-fg rounded-[--radius-control] px-6 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {isSoldOutPick ? 'Notify me' : 'Coming in J4'}
-      </button>
+      <div className="flex flex-col gap-3">
+        <button
+          type="button"
+          // "Notify me" is J8's back-in-stock alert, so a sold-out pick still shows the button
+          // it will eventually own rather than a dead control.
+          disabled={isSoldOutPick || adding || selectedPill?.variantId == null}
+          onClick={() => {
+            void handleAddToBag()
+          }}
+          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSoldOutPick ? 'Notify me' : adding ? 'Adding…' : 'Add to bag'}
+        </button>
+
+        {/* One polite live region for both outcomes: an add is not urgent enough to interrupt
+            whatever a screen reader is already saying, but it must still be announced. */}
+        <div aria-live="polite" className="min-h-5">
+          {addError !== null ? <p className="text-danger text-sm font-medium">{addError}</p> : null}
+          {added && addError === null ? (
+            <p className="text-fg-muted text-sm">
+              Added to your bag.{' '}
+              <Link href="/cart" className="text-accent underline underline-offset-2">
+                View bag
+              </Link>
+            </p>
+          ) : null}
+        </div>
+      </div>
 
       <SizeChartModal chart={sizeChart} open={sizeChartOpen} onClose={() => setSizeChartOpen(false)} />
     </div>

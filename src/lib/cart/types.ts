@@ -13,7 +13,7 @@
  */
 import type { ImageView } from '@/lib/catalog/types'
 import type { CouponRejection } from '@/lib/pricing/coupon'
-import type { PricingView } from '@/lib/pricing/totals'
+import type { CartPricing, PricingView } from '@/lib/pricing/totals'
 import type { PaymentMethod } from '@/types'
 
 /**
@@ -116,6 +116,22 @@ export interface CartView {
   canCheckout: boolean
 }
 
+/**
+ * Everything checkout needs from the cart, read once.
+ *
+ * `couponId` travels separately from the view because the view carries the customer-facing
+ * *code* while the order row stores the relationship — and looking the code back up at order
+ * time would be a second query that could disagree with the first.
+ */
+export interface PricedCartResult {
+  view: CartView
+  pricing: CartPricing
+  cartId: number | string | null
+  /** The signed-in owner, or null for a guest cart. Never taken from the request body. */
+  customerId: number | string | null
+  couponId: number | string | null
+}
+
 /** What a caller asks the cart to do. Quantities are validated inside, never trusted. */
 export interface CartMutation {
   variantId: number | string
@@ -139,6 +155,14 @@ export interface CartPricingOptions {
 export interface CartPort {
   /** The cart for this session, creating one only if `create` is set. */
   getCart(sessionId: string, options?: CartPricingOptions & { create?: boolean }): Promise<CartView>
+  /**
+   * The same read, keeping the `CartPricing` and the owning customer that placing an order needs.
+   *
+   * Separate from `getCart` rather than folded into it because the extra payload is useless to a
+   * page — it cannot be serialised to a client component — and every route that does not place an
+   * order should not be handed the machinery for doing so.
+   */
+  getPricedCart(sessionId: string, options?: CartPricingOptions): Promise<PricedCartResult>
   addItem(sessionId: string, mutation: CartMutation, options?: CartPricingOptions): Promise<CartView>
   setItemQty(sessionId: string, mutation: CartMutation, options?: CartPricingOptions): Promise<CartView>
   removeItem(sessionId: string, variantId: number | string, options?: CartPricingOptions): Promise<CartView>

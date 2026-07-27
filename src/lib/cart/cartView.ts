@@ -17,7 +17,13 @@
  * current price, which is honest and still lets them buy.
  */
 import { evaluateCoupon, type CouponRule } from '@/lib/pricing/coupon'
-import { priceCart, toPricingView, type PriceableLine, type PricingSettings } from '@/lib/pricing/totals'
+import {
+  priceCart,
+  toPricingView,
+  type CartPricing,
+  type PriceableLine,
+  type PricingSettings,
+} from '@/lib/pricing/totals'
 import { Money } from '@/lib/pricing/money'
 import type {
   CartItem,
@@ -87,6 +93,23 @@ function orphanLine(item: CartItem): CartLineView {
 }
 
 /**
+ * A cart view together with the pricing it was built from.
+ *
+ * `CartView.pricing` is a `PricingView` — flattened to plain numbers so it can cross the server
+ * /client boundary. That is the right shape for rendering and the wrong shape for placing an
+ * order: `buildOrderDraft` needs the per-line tax and the `Money` values that `toPricingView`
+ * discards on the way out.
+ *
+ * Rather than have checkout re-run `priceCart` and risk a second, subtly different set of totals
+ * reaching the order row, the pricing is handed back alongside the view. The customer is shown
+ * and charged the output of exactly one calculation.
+ */
+export interface PricedCart {
+  view: CartView
+  pricing: CartPricing
+}
+
+/**
  * Assemble the cart view and its totals.
  *
  * Pure. Given the same items, snapshots and settings it produces the same cart, which is what
@@ -94,6 +117,11 @@ function orphanLine(item: CartItem): CartLineView {
  * qualifies — be tests rather than a staged database.
  */
 export function buildCartView(input: BuildCartInput): CartView {
+  return buildPricedCart(input).view
+}
+
+/** As `buildCartView`, but keeping the `CartPricing` that checkout needs. */
+export function buildPricedCart(input: BuildCartInput): PricedCart {
   const { id, items, snapshots, settings, coupon, couponUsageByCustomer = 0, loyaltyBalance = 0, options = {} } = input
 
   const byVariant = new Map(snapshots.map((snapshot) => [String(snapshot.variantId), snapshot]))
@@ -167,14 +195,17 @@ export function buildCartView(input: BuildCartInput): CartView {
   )
 
   return {
-    id,
-    lines,
-    pricing: toPricingView(pricing),
-    couponCode: pricing.coupon?.code ?? null,
-    couponRejection: pricing.couponRejection,
-    isEmpty: lines.length === 0,
-    blockingIssues,
-    canCheckout: lines.length > 0 && blockingIssues.length === 0 && priceable.length > 0,
+    view: {
+      id,
+      lines,
+      pricing: toPricingView(pricing),
+      couponCode: pricing.coupon?.code ?? null,
+      couponRejection: pricing.couponRejection,
+      isEmpty: lines.length === 0,
+      blockingIssues,
+      canCheckout: lines.length > 0 && blockingIssues.length === 0 && priceable.length > 0,
+    },
+    pricing,
   }
 }
 

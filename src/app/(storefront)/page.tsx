@@ -1,28 +1,104 @@
 /**
- * Placeholder home page. Replaced by the real storefront in stage J3.
- * Exists so the foundation stage has a route to smoke-test.
+ * `/` — the storefront's front door.
+ *
+ * Replaces the J0 placeholder that was still standing here. Three bands, each answering one
+ * question a first-time visitor has: what is this, what does it look like, and where do I start.
+ *
+ * Everything on the page is composed from what J3 already built — `ProductGrid` renders the same
+ * `ProductCardView` the listing pages use, so a change to how a product card reads happens once.
+ * The home page deliberately owns no new view model of its own.
+ *
+ * The "new in" band is the newest arrivals rather than a hand-picked selection, because a
+ * curated one needs a `featured` flag on the product and somewhere in the admin to set it —
+ * that is a feature to spec in `docs/FEATURES.md`, not a literal in a page component.
  */
-export default function HomePage() {
+import Link from 'next/link'
+
+import { ProductGrid } from '@/components/catalog/ProductGrid'
+import { JsonLd } from '@/components/seo/JsonLd'
+import { EMPTY_FILTERS } from '@/lib/catalog/types'
+import { getCatalog } from '@/lib/catalog/server'
+import { websiteJsonLd } from '@/lib/seo/jsonLd'
+
+/** How many arrivals the band shows. Two full rows at the widest grid. */
+const NEW_IN_COUNT = 8
+
+export default async function HomePage() {
+  const catalog = await getCatalog()
+
+  const [listing, categories] = await Promise.all([
+    catalog.listProducts({ ...EMPTY_FILTERS, sort: 'newest' }),
+    catalog.listCategories(),
+  ])
+
+  const newIn = listing.products.slice(0, NEW_IN_COUNT)
+  const topLevel = categories
+    .filter((category) => category.parentId === null)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-6 py-24">
-      <p className="text-fg-subtle text-sm tracking-[0.2em] uppercase">Threadline</p>
-      <h1 className="text-fg text-5xl leading-tight font-medium">Clothing, considered.</h1>
-      <p className="text-fg-muted max-w-prose text-lg">
-        The storefront is being built stage by stage. This placeholder confirms the foundation is
-        wired: Next.js, Payload, PostgreSQL and the design tokens.
-      </p>
-      <div className="flex flex-wrap items-center gap-3 pt-2">
-        {/* Deliberately a full page load: the admin is a separate Payload app,
-            and client-side navigating into it would pull its bundle into the storefront. */}
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-        <a
-          href="/admin"
-          className="bg-accent text-accent-fg hover:bg-accent-hover rounded-[--radius-control] px-5 py-2.5 text-sm font-medium transition-colors"
-        >
-          Open admin
-        </a>
-        <span className="text-fg-subtle text-sm">Stage J0 — Foundation</span>
-      </div>
-    </div>
+    <>
+      <JsonLd data={websiteJsonLd()} />
+
+      <section className="border-border border-b">
+        <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:py-28">
+          <p className="text-accent mb-4 text-sm font-medium tracking-[0.2em] uppercase">Threadline</p>
+          <h1 className="text-fg max-w-3xl text-4xl leading-[1.1] font-medium tracking-tight text-balance sm:text-5xl lg:text-6xl">
+            Clothing, considered.
+          </h1>
+          <p className="text-fg-muted mt-6 max-w-prose text-lg">
+            Pieces chosen for how they wear, not how quickly they sell. Every size and colour, with
+            what is actually in stock shown before you reach the bag.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href="/shop"
+              className="bg-accent text-accent-fg hover:bg-accent-hover rounded-[--radius-control] px-6 py-3 text-sm font-medium transition-colors duration-fast ease-out"
+            >
+              Shop the collection
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {topLevel.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
+          <h2 className="text-fg mb-6 text-2xl font-medium tracking-tight">Browse</h2>
+          <ul role="list" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {topLevel.map((category) => (
+              <li key={category.id}>
+                <Link
+                  href={`/c/${category.slug}`}
+                  className="border-border hover:border-accent group flex items-center justify-between rounded-[--radius-surface] border p-5 transition-colors duration-fast ease-out"
+                >
+                  <span className="text-fg text-base font-medium">{category.title}</span>
+                  <span
+                    aria-hidden="true"
+                    className="text-fg-subtle group-hover:text-accent transition-colors duration-fast ease-out"
+                  >
+                    →
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {newIn.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6">
+          <div className="mb-6 flex items-baseline justify-between gap-4">
+            <h2 className="text-fg text-2xl font-medium tracking-tight">New in</h2>
+            <Link
+              href="/shop?sort=newest"
+              className="text-fg-muted hover:text-fg text-sm transition-colors duration-fast ease-out"
+            >
+              View all
+            </Link>
+          </div>
+          <ProductGrid products={newIn} />
+        </section>
+      ) : null}
+    </>
   )
 }
