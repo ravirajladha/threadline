@@ -20,8 +20,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 
 import { hmacSha256Hex, verifyHmacSignature } from '@/lib/payments/signature'
-import { normaliseCourierStatus } from './statusMap'
+import { mapCourierStatus, normaliseCourierStatus } from './statusMap'
 import type { Shipment, ShipmentRequest, ShippingProvider, TrackingEvent } from './types'
+import type { OrderStatus } from '@/types'
 
 /** The header a real provider uses. Kept identical so the route does not change at J11. */
 export const SHIPPING_SIGNATURE_HEADER = 'x-shiprocket-signature'
@@ -120,6 +121,29 @@ export class StubShippingProvider implements ShippingProvider {
     if (index === -1) return STUB_TRACKING_SEQUENCE[0] ?? null
 
     return STUB_TRACKING_SEQUENCE[index + 1] ?? null
+  }
+
+  /**
+   * The scan in this sequence that corresponds to an order already at `status`, or null.
+   *
+   * The inverse of `statusMap`, but only over the stub's own sequence — a general reverse map would
+   * be wrong, because several courier strings map to one status and there is no way to choose
+   * between them. Searched from the end so the *latest* scan that produced this status wins, which
+   * is the one the parcel is actually at.
+   *
+   * Lets a development flow ask "what happens next" from an order's status alone, instead of taking
+   * the next scan from a caller — which would skip the sequence the stub exists to exercise.
+   */
+  currentCourierStatus(status: OrderStatus): string | null {
+    for (let index = STUB_TRACKING_SEQUENCE.length - 1; index >= 0; index -= 1) {
+      const entry = STUB_TRACKING_SEQUENCE[index]
+      if (entry === undefined) continue
+
+      const mapped = mapCourierStatus(entry)
+      if (mapped.kind === 'status' && mapped.status === status) return entry
+    }
+
+    return null
   }
 
   /**

@@ -222,6 +222,27 @@ describe('nextCourierStatus', () => {
     expect(provider().nextCourierStatus('TELEPORTED')).toBe(STUB_TRACKING_SEQUENCE[0])
   })
 
+  it('finds the scan an order at a given status has already reached', () => {
+    const courier = provider()
+
+    expect(courier.currentCourierStatus('out_for_delivery')).toBe('OUT FOR DELIVERY')
+    expect(courier.currentCourierStatus('delivered')).toBe('DELIVERED')
+  })
+
+  it('reports no scan for an order the courier has not touched yet', () => {
+    // A packed order restarts the sequence, which is what `nextCourierStatus(null)` does.
+    expect(provider().currentCourierStatus('packed')).toBeNull()
+  })
+
+  it('drives the sequence forward from an order status', () => {
+    const courier = provider()
+
+    expect(courier.nextCourierStatus(courier.currentCourierStatus('packed'))).toBe('PICKUP SCHEDULED')
+    expect(courier.nextCourierStatus(courier.currentCourierStatus('out_for_delivery'))).toBe('DELIVERED')
+    // The end of the line: a delivered parcel has nowhere left to go.
+    expect(courier.nextCourierStatus(courier.currentCourierStatus('delivered'))).toBeNull()
+  })
+
   it('emits only statuses the mapper understands', () => {
     // The sequence exists to drive local development, so a token `statusMap` cannot read would make
     // the local flow prove nothing about the real one.
