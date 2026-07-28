@@ -332,8 +332,69 @@ which had let a signed-in customer POST a fabricated “Threadline Support” me
 thread. `docs/ARCHITECTURE.md` §13. The Claude assistant remains J11.
 
 ### [ ] J8 — Account, returns & loyalty *(static OTP)*
-Auth with a static development OTP, order history with status timeline, wishlist with back-in-stock
-alerts, reviews with photos and fit feedback, returns and **size exchange**, loyalty points.
+**Goal:** the customer gets an account. They sign in, see their orders and where each one is, send
+one back or swap it for another size, review what they kept, and watch their points. Everything the
+storefront has been building against a session cookie since J4 finally has a customer behind it.
+
+**No migration expected** — `returns`, `reviews`, `wishlists` and `loyaltyTransactions` all exist
+from J1, `customers` is already an auth collection, and the dev OTP is a fixed string that needs no
+storage. Confirm this before starting each part rather than assuming it; if a field is genuinely
+missing, generate the migration then, not retroactively.
+
+Build in this order: nothing else works without a session.
+
+**Auth — `src/lib/auth/`** *(the seam is `customerSession.ts` from J7)*
+- [ ] `otp.ts` — `OtpChannel` interface plus `StubOtpChannel`: requesting always succeeds, `000000`
+      verifies, and a real code is never stored because there is none. J11 swaps in delivery and a
+      hashed code with an expiry; the *shape* of verification is built for real now
+- [ ] `factory.ts` — selects by environment, throws in production, as the other three factories do
+- [ ] `login.ts` — pure: the decisions around a login attempt. **No user enumeration** — "we've sent
+      a code" is the answer whether or not the address exists (A07). Attempts are counted and a
+      lockout is a typed refusal, not a thrown error
+- [ ] `/api/auth` — request-code · verify · logout, rate-limited per address *and* per IP, session
+      issued through Payload so the cookie is httpOnly and SameSite by its own config (A02/A07)
+- [ ] Guest cart merges into the customer's on login — `cart/merge.ts` exists and is tested from J4,
+      so this is wiring, not new logic
+
+**Account — `src/app/(storefront)/account/`**
+- [ ] `/account` shell with the signed-out state J7 already renders, now backed by a real login
+- [ ] `/account/orders` and `/account/orders/[number]` — history and one order. The timeline reads
+      `orderEvents`, which has been the audit trail since J4, so the customer sees exactly what the
+      system recorded rather than a second story kept in parallel
+- [ ] The order number still authorises nothing: scoped by session, same rule as tickets
+
+**Returns and exchange — `src/lib/returns/`**
+- [ ] `eligibility.ts` — pure: delivered, inside `settings.returnWindowDays`, not already returned,
+      per line rather than per order. A typed reason for every refusal
+- [ ] `transitions.ts` — the return status machine over the six `RETURN_STATUSES`
+- [ ] `exchange.ts` — a size swap is a return *plus* a reservation against the new variant, and the
+      reservation has to hold before the parcel is collected or the exchange is a promise we cannot
+      keep. Reuses `inventory/reservation.ts`
+- [ ] `payloadReturns.ts` — raise · approve · receive · refund, role-checked, stock returned to the
+      ledger only on `received` (goods inspected first, per the J5 note)
+- [ ] `/api/returns` and the customer flow under `/account/orders/[number]`
+
+**Reviews — `src/lib/reviews/`**
+- [ ] `eligibility.ts` — only a delivered order, one review per product per customer, and the
+      purchase is verified from the order rather than claimed by the request (A04)
+- [ ] `summary.ts` — average rating, distribution, and the fit histogram that makes "runs small"
+      a number on the product page rather than a comment somebody has to read
+- [ ] Submission with photos through the existing media pipeline; `status` gates publication
+- [ ] Product page shows the summary and the published reviews — the first J3 surface to change
+
+**Wishlist and loyalty**
+- [ ] `/account/wishlist` — add, remove, and the restock subscription J5's `stock-alerts` job
+      already reads. The job exists; this gives it rows
+- [ ] `src/lib/loyalty/ledger.ts` — balance is the sum of an append-only ledger, never a column kept
+      in step by hand. Points earn on **delivery**, not on payment, so a returned order does not mint
+      points; expiry and reversal are ledger rows
+- [ ] `/account` shows the balance and the ledger behind it
+
+**Close**
+- [ ] OWASP pass: A01 every account surface scoped by session and traced to collection `access`,
+      A02 no secret in a cookie the client can read, A04 eligibility decided server-side from the
+      order, A07 no enumeration and a real lockout, A03 review bodies rendered as text
+- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §14 written
 
 ### [ ] J9 — SEO & performance
 Sitemap, robots, canonicals, OG image generation, Core Web Vitals pass, image pipeline,

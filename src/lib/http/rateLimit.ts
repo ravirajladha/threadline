@@ -173,6 +173,11 @@ export const RATE_LIMITS = {
   // repeatedly in a minute, and an unbounded text field is worth protecting.
   supportRaise: { limit: 5, windowMs: 60_000 },
   supportReply: { limit: 20, windowMs: 60_000 },
+  // Auth is the tightest surface in the app. Requesting a code sends a message to somebody, so an
+  // unbounded endpoint is a way to use this shop to spam a stranger's inbox; verifying is a guess
+  // at a six-digit code, and the per-address lockout in `login.ts` is the other half of that pair.
+  authRequest: { limit: 5, windowMs: 60_000 },
+  authVerify: { limit: 10, windowMs: 60_000 },
 } as const satisfies Record<string, RateLimitRule>
 
 /**
