@@ -20,11 +20,10 @@
 import type { Payload, Where } from 'payload'
 
 import { availableQty } from '@/lib/catalog/variantView'
-import { queueNotification } from '@/lib/notify/queue'
+import { getDispatcher } from '@/lib/notify/factory'
+import { emailRecipient } from '@/lib/notify/recipient'
 import { relationshipId } from '@/lib/utils/ids'
 import type { Job, JobContext, JobCounts } from '../types'
-
-export const RESTOCK_EVENT = 'stock.back_in_stock'
 
 /** Just enough of a subscription to decide. */
 export interface RestockSubscription {
@@ -32,6 +31,8 @@ export interface RestockSubscription {
   customerId: number
   /** Where the alert would go. Null if the account has no address on it. */
   email: string | null
+  /** For the greeting. */
+  name?: string | null
   sku: string
   /** `stockQty − reservedQty`, floored at zero. */
   available: number
@@ -118,8 +119,14 @@ async function loadSubscriptions(payload: Payload): Promise<RestockSubscription[
   ])
 
   const stock = new Map(variants.map((variant) => [variant.id, variant]))
-  const emails = new Map(
-    customers.map((customer) => [customer.id, typeof customer.email === 'string' ? customer.email : null]),
+  const contacts = new Map(
+    customers.map((customer) => [
+      customer.id,
+      {
+        email: typeof customer.email === 'string' ? customer.email : null,
+        name: typeof customer.name === 'string' ? customer.name : null,
+      },
+    ]),
   )
 
   return rows.flatMap((row) => {
@@ -137,7 +144,8 @@ async function loadSubscriptions(payload: Payload): Promise<RestockSubscription[
       {
         id: row.id,
         customerId,
-        email: emails.get(customerId) ?? null,
+        email: contacts.get(customerId)?.email ?? null,
+        name: contacts.get(customerId)?.name ?? null,
         sku: variant.sku,
         available: availableQty(variant.stockQty, variant.reservedQty),
         notifyOnRestock: row.notifyOnRestock === true,
@@ -153,20 +161,22 @@ export const stockAlertsJob: Job = {
   async run({ payload }: JobContext): Promise<JobCounts> {
     const subscriptions = await loadSubscriptions(payload)
     const selection = selectRestockAlerts(subscriptions)
+    const notify = getDispatcher(payload)
 
     let notified = 0
 
     for (const subscription of selection.alert) {
-      const queued = await queueNotification(payload, {
-        event: RESTOCK_EVENT,
-        channel: 'email',
-        recipient: subscription.email ?? '',
-        templateKey: 'stock-back-in-stock',
+      const recipient = emailRecipient({ email: subscription.email, name: subscription.name })
+      if (recipient === null) continue
+
+      const result = await notify.dispatch({
+        event: 'stock.back_in_stock',
+        recipient,
         subject: restockSubject(subscription.customerId, subscription.sku),
         variables: { sku: subscription.sku, available: subscription.available },
       })
 
-      if (queued) notified += 1
+      if (result.status === 'sent') notified += 1
     }
 
     return {

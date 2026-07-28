@@ -13,9 +13,10 @@
  * for the lock. Delete the `lockOrderByNumber` call and the two flows interleave, both read a trail
  * without the event id, and both apply it — which is exactly the bug, and the assertions below fail.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createPayloadOrders } from '@/lib/orders/payloadOrders'
+import type { Dispatcher } from '@/lib/notify/dispatcher'
 import type { PaymentEvent } from '@/lib/payments/types'
 import { createFakePayload, type FakeOrderRow } from './support/fakePayload'
 
@@ -112,6 +113,151 @@ describe('applyPaymentEvent — locking', () => {
     expect(decision).toMatchObject({ action: 'ignore', reason: 'reference_mismatch' })
     expect(state.log).toEqual(['lock'])
     expect(state.events).toHaveLength(0)
+  })
+})
+
+describe('applyPaymentEvent — notification', () => {
+  it('sends the confirmation a customer actually waits for', async () => {
+    // The gap this closes: `applyPaymentEvent` writes status itself rather than calling
+    // `transition`, so hooking only `transition` would have left `order.confirmed` — the single
+    // most expected email in the whole flow — as the one that never arrives.
+    const { payload } = createFakePayload({ ...ORDER, email: 'asha@example.com' })
+    const dispatch = vi.fn().mockResolvedValue({ status: 'sent' })
+
+    await createPayloadOrders({ payload, notify: { dispatch } as unknown as Dispatcher }).applyPaymentEvent(
+      captureEvent(),
+    )
+
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      event: 'order.confirmed',
+      recipient: { address: 'asha@example.com' },
+    })
+  })
+
+  it('does not announce a failed payment', async () => {
+    // The customer is looking at the failure page. A second telling is noise at the worst moment.
+    const { payload } = createFakePayload({ ...ORDER, email: 'asha@example.com' })
+    const dispatch = vi.fn().mockResolvedValue({ status: 'sent' })
+
+    await createPayloadOrders({ payload, notify: { dispatch } as unknown as Dispatcher }).applyPaymentEvent({
+      ...captureEvent(),
+      type: 'payment.failed',
+    })
+
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('transition — notification', () => {
+  /** A dispatcher double. The port is given one explicitly, so no channel is ever built. */
+  function fakeNotify() {
+    const dispatch = vi.fn().mockResolvedValue({ status: 'sent', event: 'order.shipped', channel: 'email', providerId: 'p1' })
+
+    return { notify: { dispatch } as unknown as Dispatcher, dispatch }
+  }
+
+  it('tells the customer about a status the customer is waiting on', async () => {
+    // The structural claim of J6: `transition` is the only path a status can take, so hooking it
+    // here means coverage does not depend on every caller remembering.
+    const { payload } = createFakePayload({ ...ORDER, email: 'asha@example.com', status: 'packed' })
+    const { notify, dispatch } = fakeNotify()
+
+    await createPayloadOrders({ payload, notify }).transition({
+      orderId: ORDER.id,
+      toStatus: 'shipped',
+      source: 'staff',
+    })
+
+    expect(dispatch).toHaveBeenCalledOnce()
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      event: 'order.shipped',
+      recipient: { address: 'asha@example.com' },
+      subject: `order:${ORDER.orderNumber}:shipped`,
+    })
+  })
+
+  it('says nothing about an internal step', async () => {
+    const { payload } = createFakePayload({ ...ORDER, email: 'asha@example.com' })
+    const { notify, dispatch } = fakeNotify()
+
+    await createPayloadOrders({ payload, notify }).transition({
+      orderId: ORDER.id,
+      toStatus: 'confirmed',
+      source: 'webhook',
+    })
+
+    // `confirmed` does notify; `packed` is the silent one, and this proves the map is consulted
+    // rather than every transition being announced.
+    expect(dispatch).toHaveBeenCalledOnce()
+
+    const second = fakeNotify()
+    const { payload: other } = createFakePayload({
+      ...ORDER,
+      email: 'asha@example.com',
+      status: 'confirmed',
+    })
+
+    await createPayloadOrders({ payload: other, notify: second.notify }).transition({
+      orderId: ORDER.id,
+      toStatus: 'packed',
+      source: 'staff',
+    })
+
+    expect(second.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('joins the caller’s transaction, so a rolled-back order takes its notification with it', async () => {
+    const { payload } = createFakePayload({ ...ORDER, email: 'asha@example.com', status: 'packed' })
+    const { notify, dispatch } = fakeNotify()
+
+    await createPayloadOrders({ payload, notify }).transition({
+      orderId: ORDER.id,
+      toStatus: 'shipped',
+      source: 'staff',
+    })
+
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ transactionID: expect.anything() })
+  })
+
+  it('has nobody to tell when the order carries no address', async () => {
+    const { payload } = createFakePayload({ ...ORDER, status: 'packed' })
+    const { notify, dispatch } = fakeNotify()
+
+    await createPayloadOrders({ payload, notify }).transition({
+      orderId: ORDER.id,
+      toStatus: 'shipped',
+      source: 'staff',
+    })
+
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('completes the transition even when the dispatcher throws', async () => {
+    // The rule: a notification failure never blocks the order flow. `dispatch` promises not to
+    // throw — this is the belt for the day something upstream of it does.
+    const { state, payload } = createFakePayload({ ...ORDER, email: 'asha@example.com', status: 'packed' })
+    const notify = { dispatch: vi.fn().mockRejectedValue(new Error('provider exploded')) } as unknown as Dispatcher
+
+    await createPayloadOrders({ payload, notify }).transition({
+      orderId: ORDER.id,
+      toStatus: 'shipped',
+      source: 'staff',
+    })
+
+    expect(state.order.status).toBe('shipped')
+    expect(state.events).toHaveLength(1)
+  })
+
+  it('sends nothing at all when notifications are turned off', async () => {
+    const { state, payload } = createFakePayload({ ...ORDER, email: 'asha@example.com', status: 'packed' })
+
+    await createPayloadOrders({ payload, notify: null }).transition({
+      orderId: ORDER.id,
+      toStatus: 'shipped',
+      source: 'staff',
+    })
+
+    expect(state.order.status).toBe('shipped')
   })
 })
 

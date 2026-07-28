@@ -17,7 +17,8 @@
  */
 import type { Payload, Where } from 'payload'
 
-import { queueNotification } from '@/lib/notify/queue'
+import { getDispatcher } from '@/lib/notify/factory'
+import { emailRecipient } from '@/lib/notify/recipient'
 import { relationshipId } from '@/lib/utils/ids'
 import type { Job, JobContext, JobCounts } from '../types'
 
@@ -34,13 +35,13 @@ export const ABANDONED_CART_RULES: AbandonedCartRules = Object.freeze({
   maxAgeHours: 72,
 })
 
-export const ABANDONED_CART_EVENT = 'cart.abandoned'
-
 /** Just enough of a cart to decide. Not the Payload document. */
 export interface AbandonedCartCandidate {
   id: number
   /** Where a reminder would go. Null for a guest with no account. */
   email: string | null
+  /** For the greeting. Null is fine — the template falls back. */
+  name?: string | null
   itemCount: number
   /** Last touched. ISO. */
   updatedAt: string
@@ -130,7 +131,7 @@ async function loadCandidates(payload: Payload): Promise<AbandonedCartCandidate[
     ...new Set(docs.map((cart) => relationshipId(cart.customer)).filter((id): id is number => id !== null)),
   ]
 
-  const emails = new Map<number, string | null>()
+  const contacts = new Map<number, { email: string | null; name: string | null }>()
 
   if (customerIds.length > 0) {
     const { docs: customers } = await payload.find({
@@ -142,16 +143,21 @@ async function loadCandidates(payload: Payload): Promise<AbandonedCartCandidate[
     })
 
     for (const customer of customers) {
-      emails.set(customer.id, typeof customer.email === 'string' ? customer.email : null)
+      contacts.set(customer.id, {
+        email: typeof customer.email === 'string' ? customer.email : null,
+        name: typeof customer.name === 'string' ? customer.name : null,
+      })
     }
   }
 
   return docs.map((cart) => {
     const customerId = relationshipId(cart.customer)
+    const contact = customerId === null ? undefined : contacts.get(customerId)
 
     return {
       id: cart.id,
-      email: customerId === null ? null : (emails.get(customerId) ?? null),
+      email: contact?.email ?? null,
+      name: contact?.name ?? null,
       itemCount: Array.isArray(cart.items) ? cart.items.length : 0,
       updatedAt: cart.updatedAt,
       abandonedNotifiedAt: typeof cart.abandonedNotifiedAt === 'string' ? cart.abandonedNotifiedAt : null,
@@ -166,24 +172,27 @@ export const abandonedCartJob: Job = {
   async run({ payload, now }: JobContext): Promise<JobCounts> {
     const candidates = await loadCandidates(payload)
     const selection = selectAbandonedCarts(candidates, now)
+    const notify = getDispatcher(payload)
 
     let notified = 0
 
     for (const cart of selection.send) {
-      // The email address is the recipient, never the subject: the subject must identify the
-      // occasion, and a customer can abandon more than one cart over a lifetime.
-      const queued = await queueNotification(payload, {
-        event: ABANDONED_CART_EVENT,
-        channel: 'email',
-        recipient: cart.email ?? '',
-        templateKey: 'cart-abandoned',
+      const recipient = emailRecipient({ email: cart.email, name: cart.name })
+      if (recipient === null) continue
+
+      // The address is the recipient, never the subject: the subject identifies the *occasion*, and
+      // a customer can abandon more than one cart over a lifetime.
+      const result = await notify.dispatch({
+        event: 'cart.abandoned',
+        recipient,
         subject: `cart:${cart.id}`,
         variables: { itemCount: cart.itemCount },
       })
 
-      // Stamped whether or not a row was written. If the notification log already had one, this
-      // cart was reminded and the marker is simply catching up — either way it must not be
-      // considered again tomorrow.
+      // Stamped whatever the dispatcher decided. If the log already held this message, the cart was
+      // reminded and the marker is simply catching up; if the send failed, retrying it tomorrow
+      // would mean a customer whose provider is bouncing gets chased daily. Either way it must not
+      // be considered again.
       await payload.update({
         collection: 'carts',
         id: cart.id,
@@ -192,7 +201,7 @@ export const abandonedCartJob: Job = {
         overrideAccess: true,
       })
 
-      if (queued) notified += 1
+      if (result.status === 'sent') notified += 1
     }
 
     return {

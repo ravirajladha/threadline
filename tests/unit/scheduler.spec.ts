@@ -37,7 +37,6 @@ import {
   selectReviewRequests,
   type ReviewCandidate,
 } from '@/lib/scheduler/jobs/reviewRequests'
-import { claimsSubject } from '@/lib/notify/queue'
 import type { Payload } from 'payload'
 
 const NOW = new Date('2026-07-27T12:00:00.000Z')
@@ -394,21 +393,5 @@ describe('review requests', () => {
 
     expect(selection.ask).toHaveLength(1)
     expect(selection.skipped).toMatchObject({ too_soon: 1, not_delivered: 1 })
-  })
-})
-
-describe('notification dedupe', () => {
-  it('recognises a subject already claimed in the log', () => {
-    expect(claimsSubject([{ payload: { subject: 'order:260720-0003' } }], 'order:260720-0003')).toBe(true)
-  })
-
-  it('matches the subject exactly, never by prefix', () => {
-    // A looser rule would let one order's message suppress another's the day order numbers gain
-    // a suffix.
-    expect(claimsSubject([{ payload: { subject: 'order:260720-0003-A' } }], 'order:260720-0003')).toBe(false)
-  })
-
-  it('survives a row whose payload is missing or not an object', () => {
-    expect(claimsSubject([{ payload: null }, { payload: 'text' }, {}], 'order:1')).toBe(false)
   })
 })

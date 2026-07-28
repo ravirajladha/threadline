@@ -21,6 +21,8 @@
  */
 import { getCart, readCartSession } from '@/lib/cart/server'
 import { enforceRateLimit, json, readJsonBody, safeRoute } from '@/lib/http/route'
+import { getDispatcher } from '@/lib/notify/factory'
+import { firstNameOf } from '@/lib/notify/recipient'
 import { normaliseEmail, validateAddress } from '@/lib/orders/address'
 import { assertDraftReconciles, buildOrderDraft, EmptyOrderError } from '@/lib/orders/draft'
 import { createPayloadOrders } from '@/lib/orders/payloadOrders'
@@ -160,6 +162,21 @@ export const POST = safeRoute(async (request: Request): Promise<Response> => {
   // From here the order exists. Remember it before returning, so the confirmation page can be
   // read without trusting an order number in the URL.
   await rememberOrder(placement.orderNumber)
+
+  // The one message no status change can send: an order is *created* at `pending`, and
+  // `statusNotification.ts` deliberately says nothing about entering a status the order was born
+  // in. The result is ignored on purpose — `dispatch` never throws, and a customer's order must not
+  // fail because their mail provider did (CLAUDE.md: failures never block the order flow).
+  await getDispatcher(payload).dispatch({
+    event: 'order.placed',
+    recipient: { address: email, name: firstNameOf(shippingCheck.address.name) },
+    subject: `order:${placement.orderNumber}:placed`,
+    variables: {
+      orderNumber: placement.orderNumber,
+      itemCount: draft.items.length,
+      totalPaise: draft.order.grandTotal,
+    },
+  })
 
   if (paymentMethod === 'cod') {
     // A COD order is already confirmed by `buildOrderDraft` — there is nothing to pay online.

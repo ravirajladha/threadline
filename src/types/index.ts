@@ -66,7 +66,35 @@ export const STOCK_MOVEMENT_TYPES = ['in', 'out', 'adjust', 'return', 'damage'] 
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number]
 
 export const NOTIFICATION_CHANNELS = ['email', 'whatsapp'] as const
-export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
+export type NotificationChannelName = (typeof NOTIFICATION_CHANNELS)[number]
+
+/**
+ * Every message the shop is capable of sending.
+ *
+ * A closed union rather than a free string, so `notifications.event` cannot drift into three
+ * spellings of "order shipped" and a template is guaranteed to exist for each — proved by a test
+ * over this list rather than discovered when a customer does not hear from us.
+ *
+ * The seven order events are named for the *status they announce*, which is what makes
+ * `payloadOrders.transition` able to derive one from a transition without a second table.
+ */
+export const NOTIFICATION_EVENTS = [
+  'order.placed',
+  'order.confirmed',
+  'order.shipped',
+  'order.out_for_delivery',
+  'order.delivered',
+  'order.cancelled',
+  'order.refunded',
+  'cart.abandoned',
+  'stock.back_in_stock',
+  'order.review_request',
+] as const
+export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number]
+
+export function isNotificationEvent(value: unknown): value is NotificationEvent {
+  return typeof value === 'string' && (NOTIFICATION_EVENTS as readonly string[]).includes(value)
+}
 
 export const NOTIFICATION_STATUSES = [
   'queued',

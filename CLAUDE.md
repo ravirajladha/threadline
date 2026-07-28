@@ -552,10 +552,44 @@ No schema change: `orders` already carries `awbCode`, `courier` and `shiprocketO
 - [x] `npm run check` green; `docs/ARCHITECTURE.md` §10 and §11 written
 
 ### [ ] J6 — Notifications *(stubbed delivery)*
-Single `notify.dispatch(event, payload)` API with a **`ConsoleChannel`** that renders the template,
-logs it and writes the `notifications` row. Templates: placed, confirmed, shipped, out for delivery,
-delivered, cancelled, refund, abandoned cart, back-in-stock, review request. Every send logged;
-failures never block the order flow. Resend and WhatsApp adapters land in J11.
+**Goal:** one `dispatch(event, payload)` that every part of the system calls, ten templates behind
+it, and a `ConsoleChannel` that renders and logs. A customer hears about their order at each step
+that matters, the log answers "I never received it", and a provider having a bad afternoon can never
+fail a checkout.
+
+No schema change: `notifications` exists from J1 with channel, event, recipient, templateKey, the
+variables JSON, status, providerId and error. J5 already writes rows into it.
+
+**Contract — `src/lib/notify/`**
+- [ ] `types.ts` — `NotificationEvent` union in `src/types/`, `NotificationChannel` interface,
+      `Recipient`, `RenderedMessage`, `DispatchResult`. The interface is shaped around what a real
+      provider must own: rendering is ours, delivery is theirs, and the id it returns is what a
+      delivery webhook will find the row by
+- [ ] `templates.ts` — one table, ten entries: placed · confirmed · shipped · out for delivery ·
+      delivered · cancelled · refunded · abandoned cart · back-in-stock · review request. Typed
+      variables per event, so a template cannot reference a field the caller does not supply.
+      **Nothing personal in a template variable** beyond a first name — no full address, no token,
+      no payment id (A09). Exhaustive over the event union, proved by a test
+- [ ] `consoleChannel.ts` — implements `NotificationChannel`: renders, logs, returns a fabricated
+      provider id. The stub that J11 replaces with Resend and the WhatsApp Cloud API
+- [ ] `factory.ts` — channel selection by environment; throws at startup if production has no real
+      channel configured, exactly as the payment and shipping factories do
+- [ ] `dispatcher.ts` — the one entry point. Renders, sends, writes the `notifications` row, and
+      **never throws**: a failed send is a `failed` row and a logged error, never an exception that
+      reaches an order. Idempotent by subject, absorbing `queue.ts` from J5
+
+**Wiring**
+- [ ] `payloadOrders.transition` dispatches the status event it just wrote. Every status change goes
+      through that one method by construction, so coverage is structural rather than a matter of
+      remembering — the same argument as the audit trail. Injected, so a test asserts what was sent
+- [ ] The four scheduler jobs move from `queueNotification` to `dispatch`
+- [ ] Admin: the `notifications` list is already read-only; confirm it renders the new events
+
+**Surfaces**
+- [ ] OWASP pass: A01 notifications readable by support staff only, A09 no PII in any log line and
+      no token or payment id in a stored variable, A04 a recipient is resolved server-side from the
+      order and never taken from a caller
+- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §12 written
 
 ### [ ] J7 — Customer support *(assistant deferred)*
 Ticket collection, customer "My Requests" view, admin inbox with reply and assignment — plain CRUD,

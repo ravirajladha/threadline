@@ -24,6 +24,10 @@ import type { Payload, Where } from 'payload'
 import type { Order } from '@/payload-types'
 import { commitReservation, holdReservation, releaseReservation, type HoldOutcome } from '@/lib/inventory/reservationStore'
 import { createPayloadReservationStore } from '@/lib/inventory/payloadReservation'
+import { getDispatcher } from '@/lib/notify/factory'
+import { emailRecipient } from '@/lib/notify/recipient'
+import type { Dispatcher } from '@/lib/notify/dispatcher'
+import { statusMessageFor, statusSubject } from './statusNotification'
 import type { PaymentEvent } from '@/lib/payments/types'
 import { drizzleClientFor, rowsOf, toCount } from '@/lib/utils/drizzle'
 import { numericId, optionalNumericId, relationshipId } from '@/lib/utils/ids'
@@ -125,10 +129,97 @@ export async function lockOrderById(
 
 export interface PayloadOrdersOptions {
   payload: Payload
+  /**
+   * Where status notifications go.
+   *
+   * Omitted, the configured channels are used. Passing `null` turns notifications off, which is for
+   * a caller that has already told the customer — not for tests, which should assert what was sent.
+   */
+  notify?: Dispatcher | null
 }
 
 export function createPayloadOrders(options: PayloadOrdersOptions) {
   const { payload } = options
+
+  // Resolved lazily and once: building it asks `notify/factory.ts` for channels, and a port that is
+  // only ever used to place an order should not pay for that — nor fail on it.
+  let dispatcher: Dispatcher | null | undefined = options.notify
+
+  function notifier(): Dispatcher | null {
+    if (dispatcher === undefined) dispatcher = getDispatcher(payload)
+
+    return dispatcher
+  }
+
+  /**
+   * The account holder's name, for the greeting, or null for a guest order.
+   *
+   * An order stores the email it was placed with but no name — that lives on the account, and a
+   * guest checkout has none. A failure here must not stop the message: an email that opens "Hi
+   * there," is fine, and one that never arrives is not.
+   */
+  async function customerNameFor(order: Order, transactionID: string | number | null): Promise<string | null> {
+    const customerId = relationshipId(order.customer)
+    if (customerId === null) return null
+
+    try {
+      const customer = await payload.findByID({
+        collection: 'customers',
+        id: customerId,
+        depth: 0,
+        overrideAccess: true,
+        ...transactionReq(transactionID),
+      })
+
+      return typeof customer.name === 'string' ? customer.name : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Tell the customer about a status change.
+   *
+   * Called from `transition`, which is the only path a status can take — so coverage is
+   * *structural* rather than a matter of every caller remembering, the same argument that makes the
+   * audit trail complete.
+   *
+   * It cannot fail the transition. `dispatch` already promises not to throw; this catches anyway,
+   * because the promise a notification makes to an order flow has to hold even when the thing
+   * making it is broken (CLAUDE.md: failures never block the order flow).
+   */
+  async function notifyStatus(
+    order: Order,
+    toStatus: OrderStatus,
+    transactionID: string | number | null,
+  ): Promise<void> {
+    const notify = notifier()
+    if (notify === null) return
+
+    try {
+      const message = statusMessageFor(toStatus, order)
+      if (message === null) return
+
+      // The address comes from the order, which the server wrote — never from a caller (A04).
+      const recipient = emailRecipient({
+        email: order.email,
+        name: await customerNameFor(order, transactionID),
+      })
+      if (recipient === null) return
+
+      await notify.dispatch({
+        ...message,
+        recipient,
+        subject: statusSubject(order.orderNumber, toStatus),
+        transactionID,
+      })
+    } catch (error) {
+      payload.logger.error(
+        { err: error, orderNumber: order.orderNumber, toStatus },
+        'Status notification failed',
+      )
+    }
+  }
 
   /**
    * Write the order, its lines, its opening event and any loyalty spend.
@@ -352,6 +443,12 @@ export function createPayloadOrders(options: PayloadOrdersOptions) {
           overrideAccess: true,
           ...req,
         })
+
+        // Last, and inside the transaction. Last because the customer should not be told about a
+        // status change that then rolls back; inside because if it *does* roll back, the
+        // notification row must go with it (the message itself is already gone — see `notifyStatus`
+        // on why that is the acceptable half of this trade).
+        await notifyStatus(order, toStatus, txId)
       }
 
       // A caller already inside a transaction keeps it, so this joins their atomic unit rather than
@@ -463,6 +560,12 @@ export function createPayloadOrders(options: PayloadOrdersOptions) {
             await releaseReservation(store, requests)
           }
         }
+
+        // `applyPaymentEvent` writes the status itself rather than calling `transition` — it has to,
+        // because it moves `paymentStatus` in the same update and its audit row carries the event
+        // id. So the notification has to be fired here too, or the *confirmation* email — the one
+        // customers actually wait for — would be the only status message never sent.
+        await notifyStatus({ ...order, status: decision.toStatus }, decision.toStatus, transactionID)
 
         return decision
       })

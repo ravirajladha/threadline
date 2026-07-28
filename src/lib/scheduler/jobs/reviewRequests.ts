@@ -13,11 +13,11 @@
  */
 import type { Payload, Where } from 'payload'
 
-import { queueNotification } from '@/lib/notify/queue'
+import { getDispatcher } from '@/lib/notify/factory'
+import { emailRecipient } from '@/lib/notify/recipient'
+import { relationshipId } from '@/lib/utils/ids'
 import type { OrderStatus } from '@/types'
 import type { Job, JobContext, JobCounts } from '../types'
-
-export const REVIEW_REQUEST_EVENT = 'order.review_request'
 
 export interface ReviewRequestRules {
   /** Days after delivery before asking. */
@@ -33,6 +33,8 @@ export interface ReviewCandidate {
   orderNumber: string
   status: OrderStatus
   email: string | null
+  /** For the greeting. An order carries no name of its own, so this comes from the customer. */
+  name?: string | null
   /** When the courier delivered it. ISO, or null if the status arrived without a timestamp. */
   deliveredAt: string | null
 }
@@ -118,12 +120,39 @@ async function loadCandidates(
     overrideAccess: true,
   })
 
-  return docs.map((order) => ({
-    orderNumber: order.orderNumber,
-    status: order.status,
-    email: typeof order.email === 'string' ? order.email : null,
-    deliveredAt: typeof order.deliveredAt === 'string' ? order.deliveredAt : null,
-  }))
+  // An order carries the email it was placed with but no name — that lives on the account, and a
+  // guest order has none. Resolved in one query for the batch rather than one per order.
+  const customerIds = [
+    ...new Set(docs.map((order) => relationshipId(order.customer)).filter((id): id is number => id !== null)),
+  ]
+
+  const names = new Map<number, string | null>()
+
+  if (customerIds.length > 0) {
+    const { docs: customers } = await payload.find({
+      collection: 'customers',
+      where: { id: { in: customerIds } } satisfies Where,
+      depth: 0,
+      pagination: false,
+      overrideAccess: true,
+    })
+
+    for (const customer of customers) {
+      names.set(customer.id, typeof customer.name === 'string' ? customer.name : null)
+    }
+  }
+
+  return docs.map((order) => {
+    const customerId = relationshipId(order.customer)
+
+    return {
+      orderNumber: order.orderNumber,
+      status: order.status,
+      email: typeof order.email === 'string' ? order.email : null,
+      name: customerId === null ? null : (names.get(customerId) ?? null),
+      deliveredAt: typeof order.deliveredAt === 'string' ? order.deliveredAt : null,
+    }
+  })
 }
 
 export const reviewRequestsJob: Job = {
@@ -133,21 +162,23 @@ export const reviewRequestsJob: Job = {
   async run({ payload, now }: JobContext): Promise<JobCounts> {
     const candidates = await loadCandidates(payload, now, REVIEW_REQUEST_RULES)
     const selection = selectReviewRequests(candidates, now)
+    const notify = getDispatcher(payload)
 
     let notified = 0
 
     for (const order of selection.ask) {
-      const queued = await queueNotification(payload, {
-        event: REVIEW_REQUEST_EVENT,
-        channel: 'email',
-        recipient: order.email ?? '',
-        templateKey: 'order-review-request',
+      const recipient = emailRecipient({ email: order.email, name: order.name })
+      if (recipient === null) continue
+
+      const result = await notify.dispatch({
+        event: 'order.review_request',
+        recipient,
         // The order number, which is a date and a sequence — no PII, and unique per occasion.
         subject: `order:${order.orderNumber}`,
         variables: { orderNumber: order.orderNumber },
       })
 
-      if (queued) notified += 1
+      if (result.status === 'sent') notified += 1
     }
 
     return {

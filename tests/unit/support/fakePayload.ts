@@ -54,6 +54,8 @@ export interface FakeOrderRow {
   status: string
   paymentStatus: string
   grandTotal: number
+  /** Where a status notification would go. Absent means a status change has nobody to tell. */
+  email?: string | null
   paymentMethod?: string
   awbCode?: string | null
   courier?: string | null
