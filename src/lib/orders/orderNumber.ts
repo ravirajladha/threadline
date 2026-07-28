@@ -1,75 +1,47 @@
 /**
  * Order numbers.
  *
- * The reference a customer reads down the phone, so it is short, unambiguous when spoken, and
- * carries no personal information. `TL-260727-0042` is the forty-second order of 27 July 2026.
+ * The reference a customer reads down the phone. `TL-260727-0042` is the forty-second order of
+ * 27 July 2026 — short, unambiguous when spoken, and carrying no personal information.
  *
- * Deliberately **not** the database id. A sequential public id tells anyone who orders twice
- * exactly how much the shop sells, and it invites walking the numbers to see whether somebody
- * else's order looks up. The date prefix keeps the daily sequence small and resets it, so the
- * number stays short without ever suggesting a lifetime total.
- *
- * The sequence is supplied by the caller, which reads it from the database. Two checkouts in the
- * same millisecond can therefore compute the same number — that collision is caught by the
- * unique constraint on `orders.orderNumber` and retried by the port. Guarding against it here
- * would mean this module owning a database connection, which is exactly what keeps it testable
- * to not do.
+ * The shape, the parsing and the reasoning behind all of it live in `lib/utils/reference.ts`, which
+ * ticket numbers share. This file is the binding: the prefix, and the names the order code calls it
+ * by. Support numbers arrived in J7 and a second copy of the parser is how the two would drift.
  */
+import {
+  buildReference,
+  datePrefixOf,
+  parseReference,
+  type ParsedReference,
+} from '@/lib/utils/reference'
 
 export const ORDER_NUMBER_PREFIX = 'TL'
 
-/** `YYMMDD` in the shop's own local date — the date the customer will say out loud. */
-function datePart(date: Date): string {
-  const year = String(date.getFullYear() % 100).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}${month}${day}`
-}
-
-/**
- * Build an order number.
- *
- * The sequence is padded to four digits and then allowed to grow: a 10,000th order in one day
- * produces a longer number rather than wrapping round and colliding with the first.
- */
 export function buildOrderNumber(input: { date: Date; sequence: number; prefix?: string }): string {
   const { date, sequence, prefix = ORDER_NUMBER_PREFIX } = input
 
-  if (!Number.isInteger(sequence) || sequence < 1) {
-    throw new RangeError(`Order sequence must be a whole number of at least 1, received ${sequence}`)
-  }
-  if (Number.isNaN(date.getTime())) {
-    throw new RangeError('Order number requires a valid date')
-  }
-
-  return `${prefix}-${datePart(date)}-${String(sequence).padStart(4, '0')}`
+  return buildReference({ date, sequence, prefix })
 }
 
-export interface ParsedOrderNumber {
-  prefix: string
-  datePart: string
-  sequence: number
-}
+export type ParsedOrderNumber = ParsedReference
 
 /**
- * Parse an order number back out.
+ * Parse an order number back out, or null if it is not one.
  *
- * Support types one of these into a search box, so it has to survive lower case and stray
- * whitespace. Returns null rather than throwing — an unparseable reference is a customer typo,
- * which is a "we could not find that order" message, not an error.
+ * Note this now refuses a *ticket* number, which the older any-prefix pattern accepted — an
+ * identifier that parses as two different kinds of thing is a support search that silently looks in
+ * the wrong table.
  */
 export function parseOrderNumber(value: string): ParsedOrderNumber | null {
-  const match = /^([A-Z]{2,6})-(\d{6})-(\d{4,})$/.exec(value.trim().toUpperCase())
-  if (match === null) return null
-
-  const [, prefix, date, sequence] = match
-  if (prefix === undefined || date === undefined || sequence === undefined) return null
-
-  return { prefix, datePart: date, sequence: Number(sequence) }
+  return parseReference(value, ORDER_NUMBER_PREFIX)
 }
 
 /** Whether a string looks like one of ours. Used to route a support search. */
 export function isOrderNumber(value: string): boolean {
   return parseOrderNumber(value) !== null
+}
+
+/** The `TL-260727-` portion, for counting the day's orders so far. */
+export function orderDatePrefix(orderNumber: string): string {
+  return datePrefixOf(orderNumber)
 }

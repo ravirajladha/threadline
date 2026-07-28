@@ -558,9 +558,43 @@ interface. Status messages fire from `transition` and `applyPaymentEvent`, so co
 refused in production. J5’s `queue.ts` absorbed; the four jobs re-pointed. `docs/ARCHITECTURE.md` §12.
 
 ### [ ] J7 — Customer support *(assistant deferred)*
-Ticket collection, customer "My Requests" view, admin inbox with reply and assignment — plain CRUD,
-no spend. The Claude-powered assistant moves to J11, since it is the one feature that cannot be
-stubbed usefully and costs money per message.
+**Goal:** support is a product surface, not a mailto link. A customer raises a request against an
+order, sees the thread and the replies on it; an agent works a real inbox with assignment, priority
+and a status that means something. The Claude assistant moves to J11 — it is the one feature that
+cannot be stubbed usefully and costs money per message.
+
+No schema change: `tickets` exists from J1 with the thread as an array, `assignedTo`, `priority`,
+`firstResponseAt`, `resolvedAt` and `escalatedFromBot`. `customers` is already an auth collection,
+so a session exists; J8 adds the login *flow* around it.
+
+**Support — `src/lib/support/`**
+- [ ] `ticketNumber.ts` — deterministic, human-quotable, no PII. Same rule as `orderNumber`: a
+      ticket number is a reference to quote, **never** an authorisation to read a ticket
+- [ ] `transitions.ts` — the ticket status machine. `open` ⇄ `pending_customer` → `resolved` →
+      `closed`, with reopening allowed from `resolved` and refused from `closed`. Illegal moves
+      throw, as the order machine does
+- [ ] `thread.ts` — pure: a message appended to a thread, and what that implies. An agent's first
+      reply stamps `firstResponseAt` and moves an open ticket to `pending_customer`; a customer's
+      reply moves it back to `open`. That derivation is the difference between a status that
+      reports reality and one somebody has to remember to set
+- [ ] `types.ts` · `payloadTickets.ts` — the port: raise · reply · assign · set status, each
+      re-checking who is asking, and a customer reply refused on a ticket that is not theirs
+
+**Notifications — reusing J6**
+- [ ] `ticket.replied` and `ticket.resolved` events plus their templates. The first real test of
+      whether the dispatcher is actually reusable, or only looks it
+
+**Surfaces**
+- [ ] `/api/support` — action-discriminated, rate-limited, the customer resolved from the session
+      and never from the body
+- [ ] Storefront: `/account/requests` and `/account/requests/[number]`, both refusing politely
+      when there is no session (J8 adds the login they link to)
+- [ ] Admin: reply and assignment on the ticket view, driven by the same port
+- [ ] OWASP pass: A01 a customer reads only their own tickets — traced to the collection `access`,
+      not just the route; A03 message bodies are rendered as text, never as HTML; A04 the ticket
+      number does not authorise anything and the author of a message is server-resolved; A07 rate
+      limit on raise and reply
+- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §13 written
 
 ### [ ] J8 — Account, returns & loyalty *(static OTP)*
 Auth with a static development OTP, order history with status timeline, wishlist with back-in-stock

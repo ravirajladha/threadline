@@ -36,6 +36,10 @@ export interface NotificationVariables {
   'cart.abandoned': { itemCount: number }
   'stock.back_in_stock': { sku: string; available: number }
   'order.review_request': { orderNumber: string }
+  // The ticket's own subject line, which the customer wrote. Never the reply body: a notification
+  // is a nudge to come and read the thread, not a copy of it in a channel with different access.
+  'ticket.replied': { ticketNumber: string; subject: string }
+  'ticket.resolved': { ticketNumber: string; subject: string }
 }
 
 /** Everything a template is given: its own variables, plus who it is addressed to. */
@@ -192,6 +196,33 @@ export const TEMPLATES: { [E in NotificationEvent]: NotificationTemplate<E> } = 
       text: body(
         greeting(name),
         `${variables.sku} is available again${variables.available <= 3 ? ` — only ${variables.available} left` : ''}.`,
+        SIGN_OFF,
+      ),
+    }),
+  },
+
+  'ticket.replied': {
+    key: 'ticket-replied',
+    render: ({ variables, name }) => ({
+      subject: `Re: ${variables.subject} (${variables.ticketNumber})`,
+      text: body(
+        greeting(name),
+        `We've replied to your request "${variables.subject}".`,
+        `Open ${variables.ticketNumber} in your account to read it and write back.`,
+        SIGN_OFF,
+      ),
+    }),
+  },
+
+  'ticket.resolved': {
+    key: 'ticket-resolved',
+    render: ({ variables, name }) => ({
+      subject: `Resolved: ${variables.subject} (${variables.ticketNumber})`,
+      text: body(
+        greeting(name),
+        `We've marked your request "${variables.subject}" as resolved.`,
+        // Reopening is legal from `resolved`, so saying so is accurate rather than a courtesy.
+        'If that is not right, just reply on the thread and it comes straight back to us.',
         SIGN_OFF,
       ),
     }),

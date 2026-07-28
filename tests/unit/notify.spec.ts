@@ -43,6 +43,8 @@ const SAMPLES: { [E in NotificationEvent]: Parameters<typeof renderNotification>
   'cart.abandoned': { event: 'cart.abandoned', variables: { itemCount: 3 } },
   'stock.back_in_stock': { event: 'stock.back_in_stock', variables: { sku: 'TL-SHIRT-NAVY-M', available: 2 } },
   'order.review_request': { event: 'order.review_request', variables: { orderNumber: '260727-0007' } },
+  'ticket.replied': { event: 'ticket.replied', variables: { ticketNumber: 'TS-260727-0007', subject: 'Wrong size' } },
+  'ticket.resolved': { event: 'ticket.resolved', variables: { ticketNumber: 'TS-260727-0007', subject: 'Wrong size' } },
 }
 
 describe('templates', () => {

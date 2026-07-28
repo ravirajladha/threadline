@@ -89,6 +89,8 @@ export const NOTIFICATION_EVENTS = [
   'cart.abandoned',
   'stock.back_in_stock',
   'order.review_request',
+  'ticket.replied',
+  'ticket.resolved',
 ] as const
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number]
 
