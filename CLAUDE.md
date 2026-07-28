@@ -593,3 +593,35 @@ Every one keeps its stub, which is what the test suite and local development con
   belong on the collection as Payload endpoints, mirroring `endpoints/support.ts`. After that,
   reviews (`src/lib/reviews/`), then wishlist and loyalty. Owner to run `npm run test:e2e` and
   `npm run build`; sign in at `/account` with a seeded customer and code `000000`.
+- 2026-07-28 [J8, part 4 of n]: **Returns are walkable end to end.** `npm run check` green at 1510
+  unit tests. J8 still `[ ]` — remaining: reviews, wishlist, loyalty, then the OWASP pass and §14.
+  Shipped `/api/returns`, `endpoints/returns.ts`, `ReturnForm`, and the returns section on
+  `/account/orders/[number]`.
+  **A real circular import, and it was silent.** Wiring `returnStatusEndpoint` onto the collection
+  closed this loop: `collections/Returns.ts` → `endpoints/returns.ts` → `lib/returns/payloadReturns.ts`
+  → `lib/settings/storeSettings.ts` → `@payload-config` → `collections/index.ts` → `Returns.ts`. The
+  symptom was `Cannot read properties of undefined (reading 'slug')` inside `withRoleAwareNav`, and
+  the damage was **42 tests silently not running** — `returns.spec.ts` failed to *load*, so the suite
+  reported 1468 passing and nothing red. The only reason it was caught is that the number went down;
+  a new file with a cycle and no prior count would have looked fine.
+  Fixed at the cause rather than by breaking the edge: `lib/settings/mappers.ts` now holds the pure
+  mappers and `storeSettings.ts` keeps the loader that imports `@payload-config` (re-exporting, so
+  no other call site moved). A `lib/` module that wants `returnWindowDays` has no business dragging
+  every collection in behind it. **Worth generalising: any `lib/` module a collection imports must
+  not, transitively, import `@payload-config`.** That is the shape of this bug, and the ports for
+  orders, tickets and shipping are all one careless import away from it.
+  Design note: staff move a return through the endpoint rather than Payload's edit form, because the
+  transitions have consequences a form cannot express — approving an exchange takes a reservation
+  that can *fail*, and receiving one writes ledger movements. Saving `status` in a dropdown would
+  skip both and leave the database saying something the warehouse does not.
+  The customer form offers only what `evaluateReturnEligibility` allows — not as a control, since
+  the API re-derives all of it, but so nobody can ask for something that will be refused. Refused
+  lines are struck through *with the reason*, the same choice as a sold-out size in J3.
+  **Exact next action:** `src/lib/reviews/` — `eligibility.ts` (delivered order, one review per
+  product per customer, purchase verified from the order rather than claimed) and `summary.ts`
+  (average, distribution, and the fit histogram that turns "runs small" into a number on the product
+  page). Then submission with photos through the existing media pipeline, and the product page
+  showing published reviews — the first J3 surface J8 changes. Then wishlist and loyalty, then the
+  OWASP pass and `docs/ARCHITECTURE.md` §14. Owner to run `npm run test:e2e` and `npm run build`;
+  sign in at `/account` with a seeded customer and code `000000`. Note the returns flow needs a
+  **delivered** order to show anything — mark one delivered in the admin first.
