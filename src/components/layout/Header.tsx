@@ -4,7 +4,8 @@ import { MobileNav } from './MobileNav'
 import { BagIcon, SearchIcon, UserIcon } from '../ui/icons'
 
 /**
- * The storefront's one persistent chrome. Search and account remain inert placeholders until J8;
+ * The storefront's one persistent chrome. Search remains an inert placeholder until J9; account
+ * links to `/account`, which J8 built and this header spent a stage not pointing at;
  * the bag is live from J4 and carries the session's unit count.
  *
  * The count is a **prop, not a fetch**. The header is a server component rendered inside the
@@ -98,14 +99,23 @@ export function Header({ categories, bagCount = 0 }: HeaderProps): React.ReactEl
           >
             <SearchIcon className="size-5" />
           </button>
-          <button
-            type="button"
-            disabled
-            aria-label="Account (coming soon)"
-            className="text-fg-muted rounded-control p-2 disabled:cursor-not-allowed disabled:opacity-50"
+          {/*
+            One destination whether or not the visitor is signed in: `/account` renders the sign-in
+            form for a stranger and the account for a customer, decided on the server from the
+            session cookie.
+
+            The header deliberately does not know which. It could — it is a server component — but
+            resolving the session here would add an auth read to every page in the storefront for
+            the sake of one icon's label, and the icon is the same either way. The same argument as
+            the bag count being a prop rather than a fetch, above.
+          */}
+          <Link
+            href="/account"
+            aria-label="Your account"
+            className="text-fg-muted hover:text-fg rounded-control p-2 transition-colors duration-fast ease-out"
           >
             <UserIcon className="size-5" />
-          </button>
+          </Link>
           <Link
             href="/cart"
             // The count is in the label rather than only in the badge, so it is announced on
