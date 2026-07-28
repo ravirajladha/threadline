@@ -375,9 +375,9 @@ Build in this order: nothing else works without a session.
 - [x] `/api/returns` and the customer flow under `/account/orders/[number]`
 
 **Reviews — `src/lib/reviews/`**
-- [ ] `eligibility.ts` — only a delivered order, one review per product per customer, and the
+- [x] `eligibility.ts` — only a delivered order, one review per product per customer, and the
       purchase is verified from the order rather than claimed by the request (A04)
-- [ ] `summary.ts` — average rating, distribution, and the fit histogram that makes "runs small"
+- [x] `summary.ts` — average rating, distribution, and the fit histogram that makes "runs small"
       a number on the product page rather than a comment somebody has to read
 - [ ] Submission with photos through the existing media pipeline; `status` gates publication
 - [ ] Product page shows the summary and the published reviews — the first J3 surface to change
