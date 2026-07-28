@@ -35,7 +35,7 @@ export const metadata: Metadata = {
  * Flip the flag as each route lands; that is the whole of the change.
  */
 const DOORS = [
-  { href: '/account/orders', label: 'Orders', hint: 'What you have bought, and where it is', ready: false },
+  { href: '/account/orders', label: 'Orders', hint: 'What you have bought, and where it is', ready: true },
   { href: '/account/requests', label: 'Requests', hint: 'Support threads and their replies', ready: true },
   { href: '/account/wishlist', label: 'Wishlist', hint: 'Saved pieces and back-in-stock alerts', ready: false },
 ]

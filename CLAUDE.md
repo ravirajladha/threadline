@@ -358,10 +358,10 @@ Build in this order: nothing else works without a session.
 
 **Account — `src/app/(storefront)/account/`**
 - [x] `/account` shell with the signed-out state J7 already renders, now backed by a real login
-- [ ] `/account/orders` and `/account/orders/[number]` — history and one order. The timeline reads
+- [x] `/account/orders` and `/account/orders/[number]` — history and one order. The timeline reads
       `orderEvents`, which has been the audit trail since J4, so the customer sees exactly what the
       system recorded rather than a second story kept in parallel
-- [ ] The order number still authorises nothing: scoped by session, same rule as tickets
+- [x] The order number still authorises nothing: scoped by session, same rule as tickets
 
 **Returns and exchange — `src/lib/returns/`**
 - [ ] `eligibility.ts` — pure: delivered, inside `settings.returnWindowDays`, not already returned,
