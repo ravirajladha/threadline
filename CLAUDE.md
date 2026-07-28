@@ -429,54 +429,6 @@ Every one keeps its stub, which is what the test suite and local development con
 > Entries for closed stages J0–J5 live in `docs/SESSION-LOG.md`. Only the most recent
 > sessions stay here — §0 needs to know where the last one stopped, not where every one did.
 
-- 2026-07-28 [J6]: **Notifications complete.** `npm run check` green — 1359 unit tests (up from
-  1308). `docs/ARCHITECTURE.md` §12 written and retitled from "Notifications — email and WhatsApp",
-  since naming two providers described J11 rather than what this stage built. No migration:
-  `notifications` has existed since J1.
-  **The decision that shaped the stage: where a message is fired from.** The obvious answer is "at
-  each place something happens" — checkout sends one, the shipping port sends one — and that is
-  exactly the scattered `send()` calls CLAUDE.md forbids, because the coverage it produces depends on
-  everyone remembering. J4 had already made `payloadOrders.transition` the *only* path a status can
-  take, so hooking it there makes the customer's timeline complete by construction, the same argument
-  that makes the audit trail complete.
-  **That argument then found its own hole, which was the important part.** `applyPaymentEvent` does
-  not call `transition` — it writes `status` and `paymentStatus` in one update because its audit row
-  carries the event id — so hooking `transition` alone would have left `order.confirmed` as the one
-  status message never sent. That is the email customers actually wait for. Hooked separately, with a
-  test that says why. `order.placed` is the third seam: an order is *born* at `pending`, and
-  `statusNotification.ts` deliberately says nothing about entering the status an order started in, so
-  checkout sends it.
-  Four statuses answer null on purpose and the map is exhaustive over `OrderStatus`, so a new status
-  has to be given an answer rather than defaulting to silence. `packed` is a box on a table, not
-  news; `rto` needs staff, not a message about a failure the customer may not have caused;
-  `payment_failed` is already on the screen they are looking at; `returned` is silent because the
-  refund that follows is the thing worth saying.
-  **The type that stopped a whole class of bug**: `NotificationVariables` maps each event to exactly
-  its own fields, and `NotificationMessage` distributes that over the union — so a caller that
-  decides the event at runtime (which `statusNotification.ts` does) can still build a pair, and
-  `order.shipped` cannot be paired with an abandoned cart's variables. Cost: one cast, contained
-  inside `renderNotification`, because TypeScript cannot carry the correlation through an indexed
-  lookup into the template table. Containing it there kept `as` out of the dispatcher entirely.
-  What a template variable may hold turned out to be a **security** decision rather than a formatting
-  one: `notifications.payload` is written straight from that object and read by every support agent,
-  so a test asserts the recipient's address never appears in the stored JSON. The address is a
-  column, deliberately.
-  On the dispatcher never throwing: `NotificationChannel.send` already promises an outcome rather
-  than a throw, and the send is wrapped anyway — a real SDK will break that promise the first time
-  its socket does. There is an outer catch for the database failing too, and it logs loudly, because
-  a silent swallow is how sending quietly stops working. Both paths are tested, as is a transition
-  completing while the dispatcher rejects.
-  Also worth keeping: a *failed* send writes a row, an *unreachable* recipient does not. "I never
-  received my shipping confirmation" is the question this table exists to answer, so a failure with
-  its reason belongs in it — but a guest with no email is not a failure, there is nothing to retry
-  and nobody to tell, and recording it would bury the rows somebody can act on.
-  `NOTIFICATION_PROVIDER` documented in `.env.example`; the factory reads it and refuses `console` in
-  production, exactly as the payment and shipping factories do.
-  **Next: J7 — customer support.** Ticket collection, a customer "My Requests" view and an admin
-  inbox with reply and assignment — plain CRUD, no spend; the Claude assistant is deferred to J11.
-  Owner to run `npm run test:e2e` (still only proves J3) and `npm run build`. `npm run seed` only if
-  the catalog is stale — the schema has not changed since J1. To see notifications locally, place an
-  order and watch the dev server console: the console channel prints each message in full.
 - 2026-07-28 [J7]: **Customer support complete.** `npm run check` green — 1426 unit tests (up from
   1359). `docs/ARCHITECTURE.md` §13 written and retitled from "Customer support and AI assistant",
   since the assistant is J11 and naming it here described work this stage did not do. No migration:
@@ -573,3 +525,40 @@ Every one keeps its stub, which is what the test suite and local development con
   engineering standards call first-class. Owner to run `npm run test:e2e` (still only proves J3) and
   `npm run build`; sign in locally at `/account` with any seeded customer's email and code `000000`,
   which the dev server prints to its console.
+- 2026-07-28 [J8, part 2 of n]: **Order history and the returns logic. Still `[ ]`.** `npm run check`
+  green at 1505 unit tests (up from 1455). Ticked: order history and its timeline, plus the three
+  pure returns modules. Untouched: `payloadReturns.ts`, the returns API and customer flow, all of
+  reviews, wishlist and loyalty.
+  **The timeline reads `orderEvents`**, the append-only trail every status change has written since
+  J4, rather than a story reassembled from `placedAt`/`deliveredAt` columns. One record read twice
+  instead of two that drift. Which statuses a customer sees is the *same list*
+  `statusNotification.ts` uses, and a test pins that agreement — if the two drift, the timeline and
+  the emails tell different stories about one order, which is the kind of bug nobody reports.
+  `orderEvents.note` is dropped on the way out: it carries provider event ids and staff shorthand.
+  `accountOrders.find` matches the order number **and** the session's customer id in one query, so
+  "not yours" and "no such order" are one answer. Guest orders are unreachable from an account on
+  purpose — matching on email would hand every guest order to whoever later registers that address.
+  **Returns: two decisions worth keeping.** Eligibility is **per line**, because three things bought
+  and one going back is the ordinary case and an order-level yes/no forces three requests or none.
+  And `checkReturnRequest` exists because a form can be edited: a quantity is input, not data, and a
+  line id that is not on the order is *refused* rather than dropped — dropping it silently returns
+  less than the customer asked for.
+  **Exchange reserves the replacement at approval, not at shipping**, and that is the whole design.
+  The tempting order — approve, collect, inspect, then look for a medium — is how a customer waits
+  ten days to learn the size sold out on day two. The cost is a unit held that may never be claimed,
+  which is worse for inventory and better for the customer; the alternative sells the same medium
+  twice. `available` is `stockQty − reservedQty`, so an exchange cannot be promised against units
+  held for somebody else's checkout.
+  The status machine reaches money by exactly one route, `received → refunded`, and restores stock
+  only at `received` — the same rule J5 stated when it refused to credit stock on a tracking event.
+  Rejection stays reachable until the goods are with us, because parcels go missing.
+  Applied §0's new archiving rule for the first time: J6's entry moved to `docs/SESSION-LOG.md` now
+  that J7 has closed.
+  **Exact next action:** `src/lib/returns/payloadReturns.ts` — raise · approve · receive · refund.
+  Raise is customer-scoped (copy `accountOrders.find`'s single-query ownership check); the rest are
+  `staffWrite('orders')`. Stock goes back through the ledger **only** on the transition to
+  `received`, and an exchange takes its reservation at `approved` via
+  `inventory/payloadReservation.ts`. Then `/api/returns` and the flow under
+  `/account/orders/[number]`. Note `returns.access` needs the same audit `Tickets` got in J7 — check
+  what Payload exposes for the collection before trusting the route. Owner to run `npm run test:e2e`
+  and `npm run build`; sign in at `/account` with a seeded customer and code `000000`.
