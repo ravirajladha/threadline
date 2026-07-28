@@ -364,10 +364,10 @@ Build in this order: nothing else works without a session.
 - [x] The order number still authorises nothing: scoped by session, same rule as tickets
 
 **Returns and exchange — `src/lib/returns/`**
-- [ ] `eligibility.ts` — pure: delivered, inside `settings.returnWindowDays`, not already returned,
+- [x] `eligibility.ts` — pure: delivered, inside `settings.returnWindowDays`, not already returned,
       per line rather than per order. A typed reason for every refusal
-- [ ] `transitions.ts` — the return status machine over the six `RETURN_STATUSES`
-- [ ] `exchange.ts` — a size swap is a return *plus* a reservation against the new variant, and the
+- [x] `transitions.ts` — the return status machine over the six `RETURN_STATUSES`
+- [x] `exchange.ts` — a size swap is a return *plus* a reservation against the new variant, and the
       reservation has to hold before the parcel is collected or the exchange is a promise we cannot
       keep. Reuses `inventory/reservation.ts`
 - [ ] `payloadReturns.ts` — raise · approve · receive · refund, role-checked, stock returned to the
