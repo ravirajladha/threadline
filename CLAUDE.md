@@ -562,3 +562,34 @@ Every one keeps its stub, which is what the test suite and local development con
   `/account/orders/[number]`. Note `returns.access` needs the same audit `Tickets` got in J7 — check
   what Payload exposes for the collection before trusting the route. Owner to run `npm run test:e2e`
   and `npm run build`; sign in at `/account` with a seeded customer and code `000000`.
+- 2026-07-28 [J8, part 3 of n]: **The returns port, and a real security finding.** `npm run check`
+  green at 1510 unit tests (up from 1505). J8 still `[ ]` — remaining: `/api/returns` and the
+  customer flow, all of reviews, wishlist and loyalty.
+  **`returns.create` was open to any signed-in customer**, and this was the *worse* cousin of the
+  hole J7 found in `tickets`. Payload exposes `POST /api/returns` whatever our routes do, and unlike
+  tickets there is **no owner hook on this collection at all** — ownership is derived from
+  `order.customer`. So a customer could create a return against **a stranger's order id**, with a
+  `status` and a `refundAmount` of their choosing, and it would land in the ops queue looking
+  legitimate. Read scoping already went through `order.customer`, so they could not read it back —
+  which is precisely what made it quiet. Now `staffWrite('refunds')`, five tests on the access
+  functions directly.
+  That is **three stages running** where the finding was at the collection layer and every route
+  test would still have passed. The question is now a standing one: *what does Payload expose for
+  this collection regardless of my routes?* — and the answer has been "too much" every time a
+  collection let customers create rows.
+  Design notes worth keeping. **What has already been sent back is counted from the returns
+  themselves**, not from a column on `orderItems` — one record rather than two that disagree, the
+  same argument as J5's event trail; rejected returns do not count, because a refused request
+  consumed nothing. **Stock goes back at `received` only.** **An exchange takes its hold at
+  `approved`**, through the same reservation store a checkout uses, so an exchange and a sale
+  compete for the last medium on equal terms; rejecting an approved exchange releases it, and
+  forgetting that leaks stock a unit at a time with nothing saying why.
+  One small trap recorded: the domain's `ReturnType` union collides with TypeScript's built-in
+  `ReturnType<T>`. Aliased at the import (`ReturnType as ReturnKind`) rather than renaming the union,
+  so `@/types` keeps reading the way `docs/SCHEMA.md` does.
+  **Exact next action:** `/api/returns` — action-discriminated (`raise`), customer resolved from the
+  session, rate-limited; then the raise-a-return flow under `/account/orders/[number]`, driven by
+  `evaluateReturnEligibility` so the form can only offer what is actually returnable. Staff actions
+  belong on the collection as Payload endpoints, mirroring `endpoints/support.ts`. After that,
+  reviews (`src/lib/reviews/`), then wishlist and loyalty. Owner to run `npm run test:e2e` and
+  `npm run build`; sign in at `/account` with a seeded customer and code `000000`.
