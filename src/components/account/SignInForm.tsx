@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { OTP_LENGTH } from '@/lib/auth/otp'
+// `otpCode`, not `otp` — the latter reaches `node:crypto` through the stub channel's constant-time
+// comparison, which webpack cannot bundle for the browser. See the note in `lib/auth/otpCode.ts`.
+import { OTP_LENGTH } from '@/lib/auth/otpCode'
 
 /**
  * Sign in with a one-time code.

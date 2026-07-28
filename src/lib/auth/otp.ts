@@ -16,7 +16,12 @@
  *   put one, so an endpoint cannot accidentally echo it into a response body — which is exactly the
  *   shortcut a development build invites and production then ships.
  */
+import { isPlausibleOtp, OTP_LENGTH, STUB_OTP_CODE } from '@/lib/auth/otpCode'
 import { safeCompareHex } from '@/lib/payments/signature'
+
+// Re-exported so every existing call site keeps its import. Only a *client* component has to reach
+// for `otpCode` directly — see the note at the top of that file.
+export { isPlausibleOtp, OTP_LENGTH, STUB_OTP_CODE }
 
 /** Where a code is going. Email today; SMS and WhatsApp are the same shape at J11. */
 export interface OtpTarget {
@@ -49,22 +54,6 @@ export interface OtpChannel {
    * distinguishing them tells an attacker whether they are guessing against a live code.
    */
   verify(target: OtpTarget, code: string): Promise<boolean>
-}
-
-/** How long a code a person has to type should be. Six digits is the convention customers expect. */
-export const OTP_LENGTH = 6
-
-/** The fixed development code, per CLAUDE.md §2. Never reachable in production — see `factory.ts`. */
-export const STUB_OTP_CODE = '000000'
-
-/**
- * Narrow untrusted input to something that could be a code.
- *
- * Checked before any comparison so a caller cannot submit a 10,000-character string and make the
- * comparison itself the denial of service.
- */
-export function isPlausibleOtp(value: unknown): value is string {
-  return typeof value === 'string' && new RegExp(`^[0-9]{${OTP_LENGTH}}$`).test(value)
 }
 
 /**
