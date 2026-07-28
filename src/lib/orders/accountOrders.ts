@@ -25,6 +25,8 @@ import { buildTimeline, type TimelineEvent, type TimelineStep } from './timeline
 
 /** One line of an order, flattened for rendering. */
 export interface AccountOrderLine {
+  /** Needed by the returns flow, which names lines by their `orderItems` id. */
+  orderItemId: number
   sku: string
   productTitle: string
   sizeLabel: string
@@ -40,6 +42,8 @@ export interface AccountOrderView {
   paymentStatus: Order['paymentStatus']
   paymentMethod: Order['paymentMethod']
   placedAt: string | null
+  /** When the courier delivered it. Drives the return window. */
+  deliveredAt: string | null
   grandTotal: number
   itemCount: number
   /** Present only once a courier has the parcel. */
@@ -64,6 +68,7 @@ function toView(order: Order, itemCount: number): AccountOrderView {
     paymentStatus: order.paymentStatus,
     paymentMethod: order.paymentMethod,
     placedAt: typeof order.placedAt === 'string' ? order.placedAt : null,
+    deliveredAt: typeof order.deliveredAt === 'string' ? order.deliveredAt : null,
     grandTotal: order.grandTotal,
     itemCount,
     awbCode: typeof order.awbCode === 'string' && order.awbCode.length > 0 ? order.awbCode : null,
@@ -164,6 +169,7 @@ export function createAccountOrders(options: { payload: Payload }) {
       ])
 
       const lines = (items as OrderItem[]).map((item) => ({
+        orderItemId: item.id,
         sku: item.sku,
         productTitle: item.productTitle,
         sizeLabel: item.sizeLabel,

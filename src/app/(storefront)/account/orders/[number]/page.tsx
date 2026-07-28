@@ -19,9 +19,19 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { Price } from '@/components/ui/Price'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ReturnForm, type ReturnableLineView } from '@/components/account/ReturnForm'
 import { readCustomerSession } from '@/lib/auth/customerSession'
 import { createAccountOrders } from '@/lib/orders/accountOrders'
 import { isTimelineOpen } from '@/lib/orders/timeline'
+import {
+  describeReturnRefusal,
+  evaluateReturnEligibility,
+  type ReturnableLine,
+} from '@/lib/returns/eligibility'
+import { createPayloadReturns } from '@/lib/returns/payloadReturns'
+import { RETURN_STATUS_LABELS } from '@/lib/returns/transitions'
+import { returnWindowDays } from '@/lib/settings/storeSettings'
+import { relationshipId } from '@/lib/utils/ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +78,48 @@ export default async function OrderPage({ params }: { params: Params }) {
   if (order === null) notFound()
 
   const open = isTimelineOpen(order.status)
+
+  // Eligibility is decided here, on the server, and the form renders it. The API re-derives all of
+  // it independently — a form can be edited — so this is about not *offering* something that would
+  // be refused, not about enforcing anything.
+  const returns = createPayloadReturns({ payload })
+  const existing = await returns.listForOrder(order.orderNumber, session.user)
+  const settings = await payload.findGlobal({ slug: 'settings', depth: 0, overrideAccess: true })
+
+  const alreadyReturned = new Map<number, number>()
+  for (const row of existing) {
+    if (row.status === 'rejected') continue
+    for (const item of row.items ?? []) {
+      const id = relationshipId(item.orderItem)
+      if (id !== null) alreadyReturned.set(id, (alreadyReturned.get(id) ?? 0) + item.qty)
+    }
+  }
+
+  const eligibility = evaluateReturnEligibility({
+    order: { status: order.status, deliveredAt: order.deliveredAt },
+    lines: order.lines.map(
+      (line): ReturnableLine => ({
+        orderItemId: line.orderItemId,
+        sku: line.sku,
+        productTitle: line.productTitle,
+        sizeLabel: line.sizeLabel,
+        colourName: line.colourName,
+        qty: line.qty,
+        alreadyReturned: alreadyReturned.get(line.orderItemId) ?? 0,
+      }),
+    ),
+    windowDays: returnWindowDays(settings),
+    now: new Date(),
+  })
+
+  const returnLines: ReturnableLineView[] = eligibility.lines.map((entry) => ({
+    orderItemId: entry.line.orderItemId,
+    productTitle: entry.line.productTitle,
+    sizeLabel: entry.line.sizeLabel,
+    colourName: entry.line.colourName,
+    maxQty: entry.eligible ? entry.maxQty : 0,
+    refusalMessage: entry.eligible ? null : describeReturnRefusal(entry.refusal),
+  }))
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-10 sm:px-6">
@@ -134,6 +186,37 @@ export default async function OrderPage({ params }: { params: Params }) {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-fg text-lg font-medium">Returns</h2>
+
+        {existing.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {existing.map((row) => (
+              <li key={row.id} className="border-border rounded-card border p-3 text-sm">
+                <span className="text-fg font-medium">{RETURN_STATUS_LABELS[row.status]}</span>
+                <span className="text-fg-muted">
+                  {' '}
+                  · {row.type === 'exchange' ? 'Exchange' : 'Return'} ·{' '}
+                  {(row.items ?? []).reduce((total, item) => total + item.qty, 0)} item
+                  {(row.items ?? []).reduce((total, item) => total + item.qty, 0) === 1 ? '' : 's'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {eligibility.refusal !== null ? (
+          // One sentence for the whole order, rather than the same line repeated against each item.
+          <p className="text-fg-muted text-sm">{describeReturnRefusal(eligibility.refusal)}</p>
+        ) : eligibility.anyReturnable ? (
+          <ReturnForm orderNumber={order.orderNumber} lines={returnLines} />
+        ) : (
+          <p className="text-fg-muted text-sm">
+            Everything on this order is already inside a return.
+          </p>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">

@@ -178,6 +178,9 @@ export const RATE_LIMITS = {
   // at a six-digit code, and the per-address lockout in `login.ts` is the other half of that pair.
   authRequest: { limit: 5, windowMs: 60_000 },
   authVerify: { limit: 10, windowMs: 60_000 },
+  // Raising a return is a considered act, not something a person repeats. Tight, because each one
+  // reads an order and its whole return history before it decides.
+  returnRaise: { limit: 5, windowMs: 60_000 },
 } as const satisfies Record<string, RateLimitRule>
 
 /**

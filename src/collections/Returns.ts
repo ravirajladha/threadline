@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { ownScopedRead, staffWrite } from '@/access'
+import { returnStatusEndpoint } from '@/endpoints/returns'
 import { moneyField } from './fields'
 import { RETURN_STATUSES, RETURN_TYPES } from '@/types'
 
@@ -38,6 +39,7 @@ export const Returns: CollectionConfig = {
     update: staffWrite('refunds'),
     delete: staffWrite('refunds'),
   },
+  endpoints: [returnStatusEndpoint],
   admin: {
     useAsTitle: 'status',
     defaultColumns: ['order', 'type', 'status', 'refundAmount', 'createdAt'],

@@ -25,7 +25,9 @@ import type { Payload, Where } from 'payload'
 import { canWrite, customerIdOf, staffIdOf, staffRoleOf } from '@/access'
 import { createPayloadReservationStore } from '@/lib/inventory/payloadReservation'
 import { holdReservation, releaseReservation } from '@/lib/inventory/reservationStore'
-import { returnWindowDays } from '@/lib/settings/storeSettings'
+// The pure half, deliberately: importing the loader would pull `@payload-config` into a module
+// that `collections/Returns.ts` imports, closing a cycle. See `settings/mappers.ts`.
+import { returnWindowDays } from '@/lib/settings/mappers'
 import { numericId, relationshipId } from '@/lib/utils/ids'
 import { transactionReq, withTransaction } from '@/lib/utils/transaction'
 import type { Order, OrderItem, Return, Variant } from '@/payload-types'

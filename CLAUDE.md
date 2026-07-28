@@ -372,7 +372,7 @@ Build in this order: nothing else works without a session.
       keep. Reuses `inventory/reservation.ts`
 - [x] `payloadReturns.ts` — raise · approve · receive · refund, role-checked, stock returned to the
       ledger only on `received` (goods inspected first, per the J5 note)
-- [ ] `/api/returns` and the customer flow under `/account/orders/[number]`
+- [x] `/api/returns` and the customer flow under `/account/orders/[number]`
 
 **Reviews — `src/lib/reviews/`**
 - [ ] `eligibility.ts` — only a delivered order, one review per product per customer, and the
