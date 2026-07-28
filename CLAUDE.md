@@ -344,20 +344,20 @@ missing, generate the migration then, not retroactively.
 Build in this order: nothing else works without a session.
 
 **Auth — `src/lib/auth/`** *(the seam is `customerSession.ts` from J7)*
-- [ ] `otp.ts` — `OtpChannel` interface plus `StubOtpChannel`: requesting always succeeds, `000000`
+- [x] `otp.ts` — `OtpChannel` interface plus `StubOtpChannel`: requesting always succeeds, `000000`
       verifies, and a real code is never stored because there is none. J11 swaps in delivery and a
       hashed code with an expiry; the *shape* of verification is built for real now
-- [ ] `factory.ts` — selects by environment, throws in production, as the other three factories do
-- [ ] `login.ts` — pure: the decisions around a login attempt. **No user enumeration** — "we've sent
+- [x] `factory.ts` — selects by environment, throws in production, as the other three factories do
+- [x] `login.ts` — pure: the decisions around a login attempt. **No user enumeration** — "we've sent
       a code" is the answer whether or not the address exists (A07). Attempts are counted and a
       lockout is a typed refusal, not a thrown error
-- [ ] `/api/auth` — request-code · verify · logout, rate-limited per address *and* per IP, session
+- [x] `/api/auth` — request-code · verify · logout, rate-limited per address *and* per IP, session
       issued through Payload so the cookie is httpOnly and SameSite by its own config (A02/A07)
-- [ ] Guest cart merges into the customer's on login — `cart/merge.ts` exists and is tested from J4,
+- [x] Guest cart merges into the customer's on login — `cart/merge.ts` exists and is tested from J4,
       so this is wiring, not new logic
 
 **Account — `src/app/(storefront)/account/`**
-- [ ] `/account` shell with the signed-out state J7 already renders, now backed by a real login
+- [x] `/account` shell with the signed-out state J7 already renders, now backed by a real login
 - [ ] `/account/orders` and `/account/orders/[number]` — history and one order. The timeline reads
       `orderEvents`, which has been the audit trail since J4, so the customer sees exactly what the
       system recorded rather than a second story kept in parallel
@@ -528,3 +528,48 @@ Every one keeps its stub, which is what the test suite and local development con
   stage since J1 that will **need a migration** — returns and reviews have collections already, but
   a full courier scan history (`shipmentEvents`, flagged in J5) and any new fields will not. Owner to
   run `npm run test:e2e` (still only proves J3) and `npm run build`.
+- 2026-07-28 [J8, part 1 of n]: **Auth is built and walkable — the rest of J8 is not started.**
+  `npm run check` green at 1455 unit tests (up from 1426). J8 is deliberately still `[ ]`; six of its
+  boxes are ticked, everything under Returns, Reviews, Wishlist and Loyalty is untouched.
+  Also this session, before J8: **J5, J6 and J7 all closed** (see `docs/SESSION-LOG.md` and the
+  git log), and a `/doctor` pass cut this file from 77k characters to 30k by archiving closed-stage
+  log entries, collapsing J0–J5, and dropping §3's directory tree. §0 gained the rule that keeps it
+  that way. Auto mode is now the default permission mode and an unused plugin was disabled.
+  **The J8 expansion confirmed there is no migration**, rather than assuming it: `returns`,
+  `reviews`, `wishlists` and `loyaltyTransactions` all exist from J1, `customers` has been an auth
+  collection since J1, and the development OTP is a fixed string with nothing to store. The J7 log
+  predicted a migration would be needed here; that prediction was wrong and is corrected.
+  **The decision worth keeping: the session is minted with Payload's own primitives.** A one-time
+  code has no password and `payload.login()` wants one, so `auth/session.ts` calls `jwtSign`,
+  `getFieldsToSign` and `generatePayloadCookie` (the last from `payload/shared` — it is exported at
+  runtime from the root but missing from the root type surface). The alternative, a hand-rolled JWT,
+  works the day it is written and then drifts: either into "nobody can log in", or — much worse —
+  into a token this app accepts and Payload's own `auth()` does not agree about. Cookie flags,
+  claims and the signing secret all come from the config rather than from this module.
+  **Auth is the one surface where the shape of a refusal is the security property**, so the pure
+  decisions in `login.ts` carry most of the tests. Requesting a code answers "if that address has an
+  account, a code is on its way" whether or not it does, and does the same work either way — the
+  friendly alternative turns the login form into a customer-list oracle. A wrong code and an expired
+  code give one answer, because telling them apart says whether a guess is worth continuing. The
+  lockout is checked when a code is *requested* as well as verified, or a script locked out of
+  verifying simply asks for a new code; and locking out clears the outstanding code, so surviving a
+  lockout is a reset rather than a resumption. An account is created only on successful
+  verification, never on request, or probing addresses would populate `customers` for us.
+  Two limitations written into `attemptStore.ts` rather than discovered later: attempt state is
+  **per process** (so the effective ceiling is `MAX_OTP_ATTEMPTS × instances` — exact on one Railway
+  container today) and **cleared on deploy**, which fails open. Both belong with the persistent
+  hashed OTP at J11; the sweep deliberately never releases a live lockout early.
+  `OTP_PROVIDER` documented in `.env.example`. The factory's production guard is the sharpest of the
+  four now — a payment stub fabricates payments, but an auth stub hands every account in the shop to
+  anyone who can type six zeroes.
+  The account page renders `/account/orders` and `/account/wishlist` as "coming soon" rather than as
+  links, because a door that 404s reads as a broken account. Flipping `ready: true` in `DOORS` is the
+  whole of the change when each route lands.
+  **Exact next action:** `/account/orders` and `/account/orders/[number]` — history and one order,
+  scoped by session, with the timeline read from `orderEvents` (the audit trail every status change
+  has written since J4, so the customer sees what the system recorded rather than a second story).
+  The order number must authorise nothing, same rule as tickets: `payloadTickets.findForActor` is the
+  pattern to copy. Then `src/lib/returns/`, which is the largest remaining piece and the one the
+  engineering standards call first-class. Owner to run `npm run test:e2e` (still only proves J3) and
+  `npm run build`; sign in locally at `/account` with any seeded customer's email and code `000000`,
+  which the dev server prints to its console.
