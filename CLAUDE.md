@@ -370,7 +370,7 @@ Build in this order: nothing else works without a session.
 - [x] `exchange.ts` — a size swap is a return *plus* a reservation against the new variant, and the
       reservation has to hold before the parcel is collected or the exchange is a promise we cannot
       keep. Reuses `inventory/reservation.ts`
-- [ ] `payloadReturns.ts` — raise · approve · receive · refund, role-checked, stock returned to the
+- [x] `payloadReturns.ts` — raise · approve · receive · refund, role-checked, stock returned to the
       ledger only on `received` (goods inspected first, per the J5 note)
 - [ ] `/api/returns` and the customer flow under `/account/orders/[number]`
 

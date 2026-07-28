@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import { customerOrStaffCreate, ownScopedRead, staffWrite } from '@/access'
+import { ownScopedRead, staffWrite } from '@/access'
 import { moneyField } from './fields'
 import { RETURN_STATUSES, RETURN_TYPES } from '@/types'
 
@@ -19,7 +19,22 @@ export const Returns: CollectionConfig = {
   slug: 'returns',
   access: {
     read: ownScopedRead({ resource: 'orders', ownerField: 'order.customer' }),
-    create: customerOrStaffCreate('refunds'),
+    /**
+     * Staff only — a customer raises a return through `/api/returns`, never through this
+     * collection's own REST route.
+     *
+     * It was `customerOrStaffCreate('refunds')` until the J8 security pass, and this was the worse
+     * cousin of the hole J7 found in `tickets`. Payload exposes `POST /api/returns` whatever our
+     * routes do, and unlike tickets there is **no owner hook here at all** — ownership is derived
+     * from `order.customer`, so nothing stopped a signed-in customer creating a return against
+     * *somebody else's order id*, with a `status` of their choosing and a `refundAmount` they set
+     * themselves. An ops queue would show a legitimate-looking refund request against a real order
+     * belonging to a real customer (OWASP A01 and A04).
+     *
+     * Read scoping already went through `order.customer`, so they could not read it back — which is
+     * precisely what made it quiet.
+     */
+    create: staffWrite('refunds'),
     update: staffWrite('refunds'),
     delete: staffWrite('refunds'),
   },

@@ -27,6 +27,7 @@ import {
   STOCK_RESTORED_AT,
 } from '@/lib/returns/transitions'
 import { decideExchange, describeExchangeRefusal } from '@/lib/returns/exchange'
+import { Returns } from '@/collections/Returns'
 import { RETURN_STATUSES } from '@/types'
 
 const WINDOW = 7
@@ -330,5 +331,46 @@ describe('exchange', () => {
     ]) {
       expect(describeExchangeRefusal(refusal).length).toBeGreaterThan(10)
     }
+  })
+})
+
+// --- Collection access -------------------------------------------------------
+
+describe('collection access', () => {
+  const call = (fn: unknown, user: unknown): unknown =>
+    (fn as (args: { req: { user: unknown } }) => unknown)({ req: { user } })
+
+  const CUSTOMER = { id: 5, collection: 'customers' }
+  const ORDER_MANAGER = { id: 2, collection: 'users', role: 'order_manager', isActive: true }
+  const SUPPORT_AGENT = { id: 3, collection: 'users', role: 'support_agent', isActive: true }
+
+  it('does not let a customer create a return through the collection', () => {
+    // The J8 pass found this open, and it was worse than the tickets equivalent: `returns` has no
+    // owner hook at all, so a customer could POST one against a stranger's order id with a status
+    // and a refundAmount of their choosing. Read scoping hid it, which is what made it quiet.
+    expect(call(Returns.access?.create, CUSTOMER)).toBe(false)
+    expect(call(Returns.access?.create, null)).toBe(false)
+  })
+
+  it('lets a role with refunds create one on a customer’s behalf', () => {
+    expect(call(Returns.access?.create, ORDER_MANAGER)).toBe(true)
+  })
+
+  it('scopes a customer’s read through the order they own', () => {
+    // There is no `customer` column on a return; ownership is the order's.
+    expect(call(Returns.access?.read, CUSTOMER)).toMatchObject({ 'order.customer': { equals: 5 } })
+    expect(call(Returns.access?.read, null)).toBe(false)
+  })
+
+  it('lets a support agent see every return and approve none', () => {
+    // `support_agent` has orders: read and refunds: none — the split the collection documents.
+    expect(call(Returns.access?.read, SUPPORT_AGENT)).toBe(true)
+    expect(call(Returns.access?.update, SUPPORT_AGENT)).toBe(false)
+  })
+
+  it('never lets a customer write to a return directly', () => {
+    // Otherwise they set their own status and their own refund amount.
+    expect(call(Returns.access?.update, CUSTOMER)).toBe(false)
+    expect(call(Returns.access?.delete, CUSTOMER)).toBe(false)
   })
 })
