@@ -457,9 +457,72 @@ leak the secret's length, and an *unset* secret refuses every request rather tha
 open endpoint. A wrong secret and an unknown job name both answer **404, never 401** (CLAUDE.md §2),
 so the route confirms neither that it exists nor which jobs do.
 
-## 12. Notifications — email and WhatsApp
+## 12. Notifications
 
-_pending (J6 stub, J11 live)_
+One `dispatch(event, payload)`, ten templates, and a `ConsoleChannel` that renders and prints.
+Everything in the codebase depends on that function and on `notify/types.ts`, never on a channel, so
+J11 adds Resend and WhatsApp as classes registered in the factory rather than as edits at every call
+site. No migration: `notifications` has existed since J1.
+
+**Coverage is structural, not remembered.** J4 made `payloadOrders.transition` the only path an
+order's status can take, so the status message is fired there — the same argument that makes the
+audit trail complete by construction. Two seams need calling out because neither is obvious:
+
+- `applyPaymentEvent` writes status *itself* rather than calling `transition`, because it moves
+  `paymentStatus` in the same update and its audit row carries the event id. It is hooked
+  separately. Without that, `order.confirmed` — the one email customers actually wait for — would
+  have been the only status message never sent.
+- `order.placed` comes from the checkout route, because an order is *born* at `pending` and
+  `statusNotification.ts` deliberately says nothing about entering the status an order started in.
+
+**Not every status is an event.** `STATUS_NOTIFICATIONS` is exhaustive over `OrderStatus`, so a new
+status must be given an answer rather than defaulting to silence, and four of them answer null on
+purpose: `packed` means a box exists on a table, which is not news; `rto` needs staff attention, not
+a message about a failure the customer may not have caused; `payment_failed` is already on the screen
+the customer is looking at; `returned` is silent because the refund that follows is the thing worth
+saying. A shop that emails at every internal step teaches customers to filter it.
+
+**The event and its variables travel as a correlated pair.** `NotificationVariables` maps each event
+to exactly the fields its template may use, and `NotificationMessage` distributes that over the union
+— so `order.shipped` cannot be paired with an abandoned cart's variables, and a caller that decides
+the event at runtime can still build one. There is exactly one cast in the system, inside
+`renderNotification`, because TypeScript cannot carry the correlation through an indexed lookup;
+containing it there keeps `as` out of the dispatcher.
+
+**What a template variable may hold is a security decision.** `notifications.payload` is written
+straight from that object and is readable by every support agent, so the variables carry an order
+number, a first name, a count, a courier, a SKU and a money figure — and never an address, a token,
+a payment id or the recipient itself. The address is a column, not a variable; a test asserts it
+never appears in the stored JSON. Money crosses as integer paise and is formatted in the template,
+which is precisely the render boundary CLAUDE.md §2 allows.
+
+**The dispatcher never throws.** Its callers are a checkout, a status transition and a cron job, and
+a provider having a bad afternoon must not fail an order. Every path returns a `DispatchResult`; the
+send is wrapped even though `NotificationChannel.send` promises an outcome rather than a throw — a
+promise a real SDK will break the first time its socket does. There is an outer catch for the
+database failing too, and it logs loudly, because a silent swallow is how sending quietly stops
+working.
+
+**Idempotency is the subject string**, absorbed unchanged from J5's `queue.ts`: the log of what we
+sent is the only record consulted, and a `subject` identifies the *occasion* — `order:<n>:shipped`,
+`restock:<customer>:<sku>`, `cart:<id>`. Matched exactly, never by prefix, so one order's message
+cannot suppress another's the day order numbers gain a suffix. Status subjects include the status,
+so an order cancelled and later refunded gets both messages.
+
+**Failed sends are recorded, unreachable recipients are not.** A `failed` row with its error is what
+answers "I never received my shipping confirmation". A recipient no channel can reach — a guest with
+no email — is not a failure: there is nothing to retry and nobody to tell, and recording it would
+fill the table with rows nobody can act on.
+
+**The console channel cannot run in production.** `notify/factory.ts` throws at startup, exactly as
+the payment and shipping factories do. A shop that prints its confirmations to a server log instead
+of sending them is worse than one that refuses to boot, because every order looks fine and no
+customer hears anything.
+
+On A04, stated precisely: `dispatch` trusts its caller for the recipient, and the guarantee lives in
+the callers — the transition and the jobs resolve it from the order or the account, and checkout
+passes the same validated address it wrote onto the order itself. The worst a caller of checkout can
+do is mail themselves one message per order they actually place, on a rate-limited route.
 
 ## 13. Customer support and AI assistant
 
@@ -488,6 +551,10 @@ admin internals (`.dashboard`) are version-sensitive — expect to revisit them 
 
 ## Changelog
 
+- **2026-07-28 (J6)** — Notifications, against `ConsoleChannel`. One `dispatch`, ten templates, the
+  channel interface and its factory; status messages fired from `transition` and `applyPaymentEvent`
+  and `order.placed` from checkout; J5's `queue.ts` absorbed and the four jobs re-pointed. No
+  migration. 1359 unit tests.
 - **2026-07-27 (J5)** — Orders, fulfilment and the scheduler, against `StubShippingProvider`.
   `src/lib/shipping/` with the provider contract, the courier status table, tracking application and
   the Payload port; `orders/fulfilment.ts` and `payloadFulfilment.ts`; one job registry, runner and

@@ -551,45 +551,11 @@ No schema change: `orders` already carries `awbCode`, `courier` and `shiprocketO
       event and job run logged without PII, A10 no user-supplied URL is ever fetched
 - [x] `npm run check` green; `docs/ARCHITECTURE.md` §10 and §11 written
 
-### [ ] J6 — Notifications *(stubbed delivery)*
-**Goal:** one `dispatch(event, payload)` that every part of the system calls, ten templates behind
-it, and a `ConsoleChannel` that renders and logs. A customer hears about their order at each step
-that matters, the log answers "I never received it", and a provider having a bad afternoon can never
-fail a checkout.
-
-No schema change: `notifications` exists from J1 with channel, event, recipient, templateKey, the
-variables JSON, status, providerId and error. J5 already writes rows into it.
-
-**Contract — `src/lib/notify/`**
-- [ ] `types.ts` — `NotificationEvent` union in `src/types/`, `NotificationChannel` interface,
-      `Recipient`, `RenderedMessage`, `DispatchResult`. The interface is shaped around what a real
-      provider must own: rendering is ours, delivery is theirs, and the id it returns is what a
-      delivery webhook will find the row by
-- [ ] `templates.ts` — one table, ten entries: placed · confirmed · shipped · out for delivery ·
-      delivered · cancelled · refunded · abandoned cart · back-in-stock · review request. Typed
-      variables per event, so a template cannot reference a field the caller does not supply.
-      **Nothing personal in a template variable** beyond a first name — no full address, no token,
-      no payment id (A09). Exhaustive over the event union, proved by a test
-- [ ] `consoleChannel.ts` — implements `NotificationChannel`: renders, logs, returns a fabricated
-      provider id. The stub that J11 replaces with Resend and the WhatsApp Cloud API
-- [ ] `factory.ts` — channel selection by environment; throws at startup if production has no real
-      channel configured, exactly as the payment and shipping factories do
-- [ ] `dispatcher.ts` — the one entry point. Renders, sends, writes the `notifications` row, and
-      **never throws**: a failed send is a `failed` row and a logged error, never an exception that
-      reaches an order. Idempotent by subject, absorbing `queue.ts` from J5
-
-**Wiring**
-- [ ] `payloadOrders.transition` dispatches the status event it just wrote. Every status change goes
-      through that one method by construction, so coverage is structural rather than a matter of
-      remembering — the same argument as the audit trail. Injected, so a test asserts what was sent
-- [ ] The four scheduler jobs move from `queueNotification` to `dispatch`
-- [ ] Admin: the `notifications` list is already read-only; confirm it renders the new events
-
-**Surfaces**
-- [ ] OWASP pass: A01 notifications readable by support staff only, A09 no PII in any log line and
-      no token or payment id in a stored variable, A04 a recipient is resolved server-side from the
-      order and never taken from a caller
-- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §12 written
+### [x] J6 — Notifications *(stubbed delivery)*
+One `dispatch(event, payload)`, ten templates and a `ConsoleChannel` behind a `NotificationChannel`
+interface. Status messages fire from `transition` and `applyPaymentEvent`, so coverage is structural;
+`order.placed` comes from checkout. Idempotent by subject, never throws, and the console channel is
+refused in production. J5’s `queue.ts` absorbed; the four jobs re-pointed. `docs/ARCHITECTURE.md` §12.
 
 ### [ ] J7 — Customer support *(assistant deferred)*
 Ticket collection, customer "My Requests" view, admin inbox with reply and assignment — plain CRUD,
@@ -962,3 +928,51 @@ Every one keeps its stub, which is what the test suite and local development con
   only if the catalog is stale; the schema did not change this session. To exercise fulfilment
   locally: set `CRON_SECRET` in `.env.local` before calling any `/api/cron/*` route — an unset secret
   refuses every request by design.
+- 2026-07-28 [J6]: **Notifications complete.** `npm run check` green — 1359 unit tests (up from
+  1308). `docs/ARCHITECTURE.md` §12 written and retitled from "Notifications — email and WhatsApp",
+  since naming two providers described J11 rather than what this stage built. No migration:
+  `notifications` has existed since J1.
+  **The decision that shaped the stage: where a message is fired from.** The obvious answer is "at
+  each place something happens" — checkout sends one, the shipping port sends one — and that is
+  exactly the scattered `send()` calls CLAUDE.md forbids, because the coverage it produces depends on
+  everyone remembering. J4 had already made `payloadOrders.transition` the *only* path a status can
+  take, so hooking it there makes the customer's timeline complete by construction, the same argument
+  that makes the audit trail complete.
+  **That argument then found its own hole, which was the important part.** `applyPaymentEvent` does
+  not call `transition` — it writes `status` and `paymentStatus` in one update because its audit row
+  carries the event id — so hooking `transition` alone would have left `order.confirmed` as the one
+  status message never sent. That is the email customers actually wait for. Hooked separately, with a
+  test that says why. `order.placed` is the third seam: an order is *born* at `pending`, and
+  `statusNotification.ts` deliberately says nothing about entering the status an order started in, so
+  checkout sends it.
+  Four statuses answer null on purpose and the map is exhaustive over `OrderStatus`, so a new status
+  has to be given an answer rather than defaulting to silence. `packed` is a box on a table, not
+  news; `rto` needs staff, not a message about a failure the customer may not have caused;
+  `payment_failed` is already on the screen they are looking at; `returned` is silent because the
+  refund that follows is the thing worth saying.
+  **The type that stopped a whole class of bug**: `NotificationVariables` maps each event to exactly
+  its own fields, and `NotificationMessage` distributes that over the union — so a caller that
+  decides the event at runtime (which `statusNotification.ts` does) can still build a pair, and
+  `order.shipped` cannot be paired with an abandoned cart's variables. Cost: one cast, contained
+  inside `renderNotification`, because TypeScript cannot carry the correlation through an indexed
+  lookup into the template table. Containing it there kept `as` out of the dispatcher entirely.
+  What a template variable may hold turned out to be a **security** decision rather than a formatting
+  one: `notifications.payload` is written straight from that object and read by every support agent,
+  so a test asserts the recipient's address never appears in the stored JSON. The address is a
+  column, deliberately.
+  On the dispatcher never throwing: `NotificationChannel.send` already promises an outcome rather
+  than a throw, and the send is wrapped anyway — a real SDK will break that promise the first time
+  its socket does. There is an outer catch for the database failing too, and it logs loudly, because
+  a silent swallow is how sending quietly stops working. Both paths are tested, as is a transition
+  completing while the dispatcher rejects.
+  Also worth keeping: a *failed* send writes a row, an *unreachable* recipient does not. "I never
+  received my shipping confirmation" is the question this table exists to answer, so a failure with
+  its reason belongs in it — but a guest with no email is not a failure, there is nothing to retry
+  and nobody to tell, and recording it would bury the rows somebody can act on.
+  `NOTIFICATION_PROVIDER` documented in `.env.example`; the factory reads it and refuses `console` in
+  production, exactly as the payment and shipping factories do.
+  **Next: J7 — customer support.** Ticket collection, a customer "My Requests" view and an admin
+  inbox with reply and assignment — plain CRUD, no spend; the Claude assistant is deferred to J11.
+  Owner to run `npm run test:e2e` (still only proves J3) and `npm run build`. `npm run seed` only if
+  the catalog is stale — the schema has not changed since J1. To see notifications locally, place an
+  order and watch the dev server console: the console channel prints each message in full.
