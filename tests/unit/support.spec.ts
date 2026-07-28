@@ -28,7 +28,10 @@ import {
   isTerminalTicketStatus,
   TICKET_TRANSITIONS,
 } from '@/lib/support/transitions'
+import { TICKET_STATUS_LABELS, toTicketView } from '@/lib/support/ticketView'
+import { Tickets } from '@/collections/Tickets'
 import { isOrderNumber } from '@/lib/orders/orderNumber'
+import { buildReference, datePrefixOf, parseReference } from '@/lib/utils/reference'
 import { TICKET_STATUSES } from '@/types'
 import type { Payload } from 'payload'
 
@@ -61,6 +64,146 @@ describe('ticket numbers', () => {
 
   it('yields the prefix used to count the day’s tickets', () => {
     expect(ticketDatePrefix('TS-260728-0007')).toBe('TS-260728-')
+  })
+})
+
+describe('collection access', () => {
+  /** Payload calls these with a request; only `user` is ever read. */
+  const call = (fn: unknown, user: unknown): unknown =>
+    (fn as (args: { req: { user: unknown } }) => unknown)({ req: { user } })
+
+  it('does not let a customer create a ticket through the collection', () => {
+    // Payload exposes `POST /api/tickets` whatever our routes do. Letting a customer through meant
+    // they chose their own ticket number, their own `firstResponseAt`, and — the real one — an
+    // opening message with `authorType: 'agent'` signed "Threadline Support" (OWASP A04).
+    expect(call(Tickets.access?.create, CUSTOMER)).toBe(false)
+    expect(call(Tickets.access?.create, null)).toBe(false)
+  })
+
+  it('still lets an agent raise one on a customer’s behalf', () => {
+    expect(call(Tickets.access?.create, AGENT)).toBe(true)
+  })
+
+  it('scopes a customer’s read to their own tickets in the query', () => {
+    // A `Where` rather than a boolean: the database never returns another customer's row, so there
+    // is nothing for a forgotten filter downstream to leak (OWASP A01).
+    expect(call(Tickets.access?.read, CUSTOMER)).toMatchObject({ customer: { equals: 5 } })
+    expect(call(Tickets.access?.read, null)).toBe(false)
+    expect(call(Tickets.access?.read, AGENT)).toBe(true)
+  })
+
+  it('refuses a customer writing to the row directly', () => {
+    // Otherwise a customer could PATCH `messages` and rewrite what an agent said.
+    expect(call(Tickets.access?.update, CUSTOMER)).toBe(false)
+  })
+})
+
+describe('shared references', () => {
+  it('refuses a sequence that is not a whole number of at least one', () => {
+    for (const sequence of [0, -1, 1.5, Number.NaN]) {
+      expect(() => buildReference({ date: NOW, sequence, prefix: 'TS' })).toThrow(RangeError)
+    }
+  })
+
+  it('refuses an invalid date', () => {
+    expect(() => buildReference({ date: new Date('nonsense'), sequence: 1, prefix: 'TS' })).toThrow(RangeError)
+  })
+
+  it('lets a sequence grow past four digits rather than wrapping into a collision', () => {
+    expect(buildReference({ date: NOW, sequence: 12_345, prefix: 'TL' })).toBe('TL-260728-12345')
+  })
+
+  it('insists on the prefix it was asked for', () => {
+    // The whole reason the prefix is a parameter rather than a capture group.
+    expect(parseReference('TS-260728-0001', 'TL')).toBeNull()
+    expect(parseReference('TS-260728-0001', 'TS')).not.toBeNull()
+  })
+
+  it('rejects anything that is not this shape', () => {
+    for (const value of ['', 'TS', 'TS-2607-0001', 'TS-260728-1', '../../etc', 'TS-260728-0001-X']) {
+      expect(parseReference(value, 'TS')).toBeNull()
+    }
+  })
+
+  it('derives the counting prefix from a real reference rather than formatting it twice', () => {
+    expect(datePrefixOf(buildReference({ date: NOW, sequence: 3, prefix: 'TS' }))).toBe('TS-260728-')
+  })
+})
+
+describe('ticket view models', () => {
+  const doc = {
+    ticketNumber: 'TS-260728-0001',
+    subject: 'Wrong size',
+    status: 'open',
+    category: 'return',
+    createdAt: NOW.toISOString(),
+    messages: [
+      { author: 'You', authorType: 'customer', body: 'Too small', sentAt: NOW.toISOString() },
+      { author: 'Threadline Support', authorType: 'agent', body: 'Sending a large', sentAt: NOW.toISOString() },
+    ],
+  } as never
+
+  it('flattens a thread and marks which side each message is on', () => {
+    const view = toTicketView(doc)
+
+    expect(view.messages).toHaveLength(2)
+    expect(view.messages[0]?.fromCustomer).toBe(true)
+    expect(view.messages[1]?.fromCustomer).toBe(false)
+  })
+
+  it('previews the latest message for the list', () => {
+    expect(toTicketView(doc).latest).toBe('Sending a large')
+  })
+
+  it('trims a long preview rather than pasting an essay into a list', () => {
+    const view = toTicketView({
+      ...(doc as unknown as Record<string, unknown>),
+      messages: [{ author: 'You', authorType: 'customer', body: 'x'.repeat(400), sentAt: NOW.toISOString() }],
+    } as never)
+
+    expect(view.latest?.length).toBeLessThan(140)
+    expect(view.latest?.endsWith('…')).toBe(true)
+  })
+
+  it('collapses newlines in a preview', () => {
+    const view = toTicketView({
+      ...(doc as unknown as Record<string, unknown>),
+      messages: [{ author: 'You', authorType: 'customer', body: 'one\n\ntwo', sentAt: NOW.toISOString() }],
+    } as never)
+
+    expect(view.latest).toBe('one two')
+  })
+
+  it('carries nothing about the customer or the assigned agent', () => {
+    // Every field a view model omits is a field that cannot leak through it.
+    const view = toTicketView({
+      ...(doc as unknown as Record<string, unknown>),
+      customer: 5,
+      assignedTo: 2,
+    } as never)
+
+    expect(view).not.toHaveProperty('customer')
+    expect(view).not.toHaveProperty('assignedTo')
+  })
+
+  it('flags a closed thread so the reply box is not offered', () => {
+    expect(toTicketView({ ...(doc as unknown as Record<string, unknown>), status: 'closed' } as never).closed).toBe(
+      true,
+    )
+    expect(toTicketView(doc).closed).toBe(false)
+  })
+
+  it('labels every status for a customer to read', () => {
+    for (const status of TICKET_STATUSES) {
+      expect(TICKET_STATUS_LABELS[status].length).toBeGreaterThan(0)
+    }
+  })
+
+  it('survives a ticket with no messages at all', () => {
+    const view = toTicketView({ ...(doc as unknown as Record<string, unknown>), messages: [] } as never)
+
+    expect(view.messages).toEqual([])
+    expect(view.latest).toBeNull()
   })
 })
 

@@ -1,6 +1,7 @@
 import type { CollectionBeforeChangeHook, CollectionConfig } from 'payload'
 
-import { customerIdOf, customerOrStaffCreate, ownScopedRead, staffWrite } from '@/access'
+import { customerIdOf, ownScopedRead, staffWrite } from '@/access'
+import { ticketAssignEndpoint, ticketReplyEndpoint, ticketStatusEndpoint } from '@/endpoints/support'
 import { TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES, MESSAGE_AUTHOR_TYPES } from '@/types'
 
 /** Stamp the raiser from the session, so a ticket cannot be filed under another account. */
@@ -25,9 +26,24 @@ export const Tickets: CollectionConfig = {
   slug: 'tickets',
   access: {
     read: ownScopedRead({ resource: 'support', ownerField: 'customer' }),
-    create: customerOrStaffCreate('support'),
-    // Replies are appended through the support endpoint in J7, which re-checks ownership;
-    // letting a customer PATCH the row directly would let them rewrite an agent's message.
+    /**
+     * Staff only — a customer raises a ticket through `/api/support`, never through this
+     * collection's own REST route.
+     *
+     * It was `customerOrStaffCreate('support')` until the J7 security pass, which is a real hole:
+     * Payload exposes `POST /api/tickets` whatever our routes do, and `stampCustomer` only fixes
+     * the *owner*. Everything else in the body was the customer's to choose — a `ticketNumber` that
+     * collides or reads however they like, a `firstResponseAt` that skews response-time reporting,
+     * and, worst, an opening message with `authorType: 'agent'` and the author "Threadline Support",
+     * which is a fabricated quote from us sitting in a real thread (OWASP A04).
+     *
+     * The same reasoning as `carts.create: denyAll` in J4: the port is the only writer, so the
+     * server owns the reference, the status and who each message is from. Staff keep create so an
+     * agent can still raise a ticket on a customer's behalf after a phone call.
+     */
+    create: staffWrite('support'),
+    // Replies are appended through the support port, which re-checks ownership; letting a customer
+    // PATCH the row directly would let them rewrite an agent's message.
     update: staffWrite('support'),
     delete: staffWrite('support'),
   },
@@ -39,7 +55,16 @@ export const Tickets: CollectionConfig = {
   hooks: {
     beforeChange: [stampCustomer],
   },
+  endpoints: [ticketReplyEndpoint, ticketStatusEndpoint, ticketAssignEndpoint],
   fields: [
+    {
+      name: 'supportActions',
+      type: 'ui',
+      admin: {
+        components: { Field: '@/components/admin/TicketActions#TicketActions' },
+        condition: (data) => Boolean(data?.id),
+      },
+    },
     {
       name: 'ticketNumber',
       type: 'text',

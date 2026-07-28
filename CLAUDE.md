@@ -557,44 +557,13 @@ interface. Status messages fire from `transition` and `applyPaymentEvent`, so co
 `order.placed` comes from checkout. Idempotent by subject, never throws, and the console channel is
 refused in production. J5’s `queue.ts` absorbed; the four jobs re-pointed. `docs/ARCHITECTURE.md` §12.
 
-### [ ] J7 — Customer support *(assistant deferred)*
-**Goal:** support is a product surface, not a mailto link. A customer raises a request against an
-order, sees the thread and the replies on it; an agent works a real inbox with assignment, priority
-and a status that means something. The Claude assistant moves to J11 — it is the one feature that
-cannot be stubbed usefully and costs money per message.
-
-No schema change: `tickets` exists from J1 with the thread as an array, `assignedTo`, `priority`,
-`firstResponseAt`, `resolvedAt` and `escalatedFromBot`. `customers` is already an auth collection,
-so a session exists; J8 adds the login *flow* around it.
-
-**Support — `src/lib/support/`**
-- [ ] `ticketNumber.ts` — deterministic, human-quotable, no PII. Same rule as `orderNumber`: a
-      ticket number is a reference to quote, **never** an authorisation to read a ticket
-- [ ] `transitions.ts` — the ticket status machine. `open` ⇄ `pending_customer` → `resolved` →
-      `closed`, with reopening allowed from `resolved` and refused from `closed`. Illegal moves
-      throw, as the order machine does
-- [ ] `thread.ts` — pure: a message appended to a thread, and what that implies. An agent's first
-      reply stamps `firstResponseAt` and moves an open ticket to `pending_customer`; a customer's
-      reply moves it back to `open`. That derivation is the difference between a status that
-      reports reality and one somebody has to remember to set
-- [ ] `types.ts` · `payloadTickets.ts` — the port: raise · reply · assign · set status, each
-      re-checking who is asking, and a customer reply refused on a ticket that is not theirs
-
-**Notifications — reusing J6**
-- [ ] `ticket.replied` and `ticket.resolved` events plus their templates. The first real test of
-      whether the dispatcher is actually reusable, or only looks it
-
-**Surfaces**
-- [ ] `/api/support` — action-discriminated, rate-limited, the customer resolved from the session
-      and never from the body
-- [ ] Storefront: `/account/requests` and `/account/requests/[number]`, both refusing politely
-      when there is no session (J8 adds the login they link to)
-- [ ] Admin: reply and assignment on the ticket view, driven by the same port
-- [ ] OWASP pass: A01 a customer reads only their own tickets — traced to the collection `access`,
-      not just the route; A03 message bodies are rendered as text, never as HTML; A04 the ticket
-      number does not authorise anything and the author of a message is server-resolved; A07 rate
-      limit on raise and reply
-- [ ] `npm run check` green; `docs/ARCHITECTURE.md` §13 written
+### [x] J7 — Customer support *(assistant deferred)*
+Tickets with a derived status — an agent reply moves a thread to waiting-on-customer, a customer
+reply brings it back, `firstResponseAt` stamps once. Ownership checked on every lookup, because a
+ticket number travels in emails and authorises nothing. `/api/support`, three admin endpoints, the
+customer thread pages and the agent panel. The security pass closed `tickets.create` to customers,
+which had let a signed-in customer POST a fabricated “Threadline Support” message into their own
+thread. `docs/ARCHITECTURE.md` §13. The Claude assistant remains J11.
 
 ### [ ] J8 — Account, returns & loyalty *(static OTP)*
 Auth with a static development OTP, order history with status timeline, wishlist with back-in-stock
@@ -1010,3 +979,54 @@ Every one keeps its stub, which is what the test suite and local development con
   Owner to run `npm run test:e2e` (still only proves J3) and `npm run build`. `npm run seed` only if
   the catalog is stale — the schema has not changed since J1. To see notifications locally, place an
   order and watch the dev server console: the console channel prints each message in full.
+- 2026-07-28 [J7]: **Customer support complete.** `npm run check` green — 1426 unit tests (up from
+  1359). `docs/ARCHITECTURE.md` §13 written and retitled from "Customer support and AI assistant",
+  since the assistant is J11 and naming it here described work this stage did not do. No migration:
+  `tickets` has carried its thread, assignment and timing columns since J1.
+  **The security pass found a real hole, and it was in the layer the routes cannot protect.**
+  `tickets.create` was `customerOrStaffCreate('support')`, which means Payload's own
+  `POST /api/tickets` was open to any signed-in customer *whatever our routes did*. The
+  `stampCustomer` hook fixed the owner and nothing else, so the rest of the body was theirs to
+  choose: a ticket number that collides, a `firstResponseAt` that skews response-time reporting, and
+  — the one that actually matters — an opening message with `authorType: 'agent'` and the author
+  "Threadline Support". That is a fabricated quote from us, sitting inside a real thread, ready for
+  a screenshot. Now `staffWrite('support')`, the same reasoning as `carts.create: denyAll` in J4,
+  with staff keeping create so an agent can raise a ticket after a phone call. Four tests now call
+  the collection's access functions directly, because the route tests would all have passed.
+  This is the second stage running where the finding was at the collection layer rather than in the
+  handlers — J4's A01 pass made the same point about `carts` and `orders`. Worth treating as the
+  default question from now on: *what does Payload expose for this collection regardless of my
+  routes?*
+  **The design idea worth keeping: a reply's consequences are derived, not set.** `thread.ts` takes
+  a message and returns the message *and its effect* — which status the ticket should move to, and
+  whether this is the first agent reply. The naive version writes `pending_customer` in the agent
+  endpoint and `open` in the customer endpoint, and within a month there is a path that forgets and
+  a queue full of statuses describing nobody's reality. Same argument as deriving the notification
+  from the status change in J6, and the same argument as the audit trail in J4.
+  **Ownership, stated once**: a ticket number is not a credential. `findForActor` does the lookup
+  *and* the check in one function, because a lookup plus a separate guard is precisely how a
+  reference becomes a password. Another customer gets "not found" rather than "forbidden" — the
+  latter confirms the reference is real — while staff without support permission get "forbidden",
+  refused before the lookup where it reveals nothing. Two subtleties: the owner comparison is
+  numeric, because `req.user.id` can arrive as a string while the relationship is an integer and
+  `===` between those silently denies every customer their own ticket; and an order attached to a
+  new request is dropped rather than refused when it is not theirs, since refusing would tell a
+  prober which order ids exist.
+  Order and ticket numbers now share `lib/utils/reference.ts`, second use per §3. Extracting it
+  fixed a **latent bug**: the old parser captured any 2–6 letter prefix, so `TS-260728-0001` parsed
+  as a perfectly valid *order* number. `isOrderNumber` would have said yes, and a support search
+  would have gone looking in the wrong table and found nothing with no clue why. The parser now
+  demands the prefix it was asked for.
+  `ticket.replied` and `ticket.resolved` were the first events added since J6, and the exhaustiveness
+  test caught the missing templates before anything ran — which is the honest answer to whether that
+  dispatcher is reusable or merely looks it.
+  `lib/auth/customerSession.ts` is new and small, and it is the seam J8 builds on: `customers` has
+  been a real auth collection since J1, so a session already works; what J8 adds is the login *flow*
+  around it. The account pages render a signed-out state rather than redirecting, because sending
+  visitors to a login route that does not exist yet would be worse than telling them plainly.
+  **Next: J8 — account, returns and loyalty**, with a static development OTP. Auth flow, order
+  history with a status timeline, wishlist with the back-in-stock alerts J5 already sends, reviews
+  with photos and fit feedback, returns and size exchange, loyalty points. Note this is the first
+  stage since J1 that will **need a migration** — returns and reviews have collections already, but
+  a full courier scan history (`shipmentEvents`, flagged in J5) and any new fields will not. Owner to
+  run `npm run test:e2e` (still only proves J3) and `npm run build`.

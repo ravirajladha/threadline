@@ -524,9 +524,73 @@ the callers — the transition and the jobs resolve it from the order or the acc
 passes the same validated address it wrote onto the order itself. The worst a caller of checkout can
 do is mail themselves one message per order they actually place, on a rate-limited route.
 
-## 13. Customer support and AI assistant
+## 13. Customer support
 
-_pending (J7 tickets, J11 assistant)_
+Tickets, a customer-facing thread and an agent inbox. No migration: `tickets` has existed since J1
+with its thread as an array, `assignedTo`, `priority`, `firstResponseAt`, `resolvedAt` and
+`escalatedFromBot`. The Claude assistant is J11 — it is the one feature that cannot be stubbed
+usefully and costs money per message.
+
+**A reply's consequences are derived, not set by hand.** `support/thread.ts` takes a message and
+returns both the message and its *effect*: an agent replying moves an open ticket to
+`pending_customer`, a customer replying brings it back — including from `resolved`, because someone
+who writes again after being told they were helped has not been helped. Assigning the status at each
+call site is how a queue fills with statuses describing nobody's reality. `firstResponseAt` is
+stamped once and never rewritten, so it answers "how fast do we reply" rather than reporting the
+most recent reply as the first.
+
+**Ownership is the security model, because a ticket number is not a credential.** It travels in
+emails, URLs and whatever a customer pastes into a chat. `findForActor` is a single function that
+looks a ticket up *and* checks who is asking — one function rather than a lookup plus a separate
+guard, since the two drifting apart is exactly how a reference becomes a password. A customer
+quoting somebody else's reference is told it does not exist; distinguishing "not yours" from "no
+such ticket" would confirm the reference is real. Staff without `support` write are refused *before*
+the lookup, where `forbidden` reveals nothing.
+
+Two subtleties worth keeping:
+
+- Owner comparison is numeric. `req.user.id` can arrive as a string from a token while the
+  relationship is an integer, and `===` between those is silently always false — which would deny
+  every customer their own ticket.
+- An order attached to a new request is checked against the same customer and **silently dropped**
+  if it is not theirs. Refusing would tell a prober which order ids exist; the request itself is
+  legitimate and the attachment is a convenience.
+
+**The security pass found and fixed a real hole.** `tickets.create` was `customerOrStaffCreate`,
+which meant Payload's own `POST /api/tickets` was open to any signed-in customer whatever our routes
+did. `stampCustomer` fixed the owner and nothing else, so the body was theirs to choose: a ticket
+number that collides or reads however they like, a `firstResponseAt` that skews response-time
+reporting, and — the one that matters — an opening message with `authorType: 'agent'` signed
+"Threadline Support", which is a fabricated quote from us sitting inside a real thread (OWASP A04).
+It is now `staffWrite('support')`, the same reasoning as `carts.create: denyAll` in J4: the port is
+the only writer, so the server owns the reference, the status and who each message is from. Staff
+keep create so an agent can raise a ticket after a phone call. Four tests pin the collection's access
+rules directly, since that is the layer the hole was in.
+
+**Message bodies are text, end to end.** Stored as text, rendered with `whitespace-pre-wrap`, never
+near `dangerouslySetInnerHTML`. A support thread is the one place in the system where a stranger's
+free text is displayed back to a member of staff, which is where stored XSS lives (OWASP A03). The
+body is also length-capped — an unbounded text field reachable from the storefront is a way to fill
+the database a megabyte at a time.
+
+**Surfaces.** `/api/support` is action-discriminated and rate-limited, with the customer resolved
+from the session by `lib/auth/customerSession.ts` and never from the body. Agent actions are Payload
+endpoints on the collection (`endpoints/support.ts`) because they need a staff session; reply,
+status and assign each re-check the role, since a custom endpoint bypasses collection access.
+`/account/requests` and `/account/requests/[number]` render a signed-out state rather than
+redirecting, because J8 has not built the login yet and sending visitors to a route that does not
+exist is worse than telling them plainly — when J8 lands, only the link changes.
+
+The admin panel offers only the status moves `canTransitionTicket` allows, so a rendered button is a
+button that works. That differs deliberately from the fulfilment panel, which shows refusals: on an
+order the reasons are instructions ("book a courier first"), whereas "a closed ticket cannot be
+reopened" is better said by the button not being there beside a status that already reads `closed`.
+
+`ticket.replied` and `ticket.resolved` were the first notification events added after J6, and the
+exhaustiveness test caught the missing templates before anything ran — which is the answer to
+whether the dispatcher is actually reusable or only looks it. A notification carries the ticket
+number and the customer's own subject line, never the reply body: it is a nudge to come and read the
+thread, not a copy of it in a channel with different access.
 
 ## 14. SEO — sitemap, OG images and Core Web Vitals
 
@@ -551,6 +615,10 @@ admin internals (`.dashboard`) are version-sensitive — expect to revisit them 
 
 ## Changelog
 
+- **2026-07-28 (J7)** — Customer support. `src/lib/support/` — shared reference builder, ticket
+  status machine, derived thread effects, the Payload port and view models; `/api/support`, three
+  admin endpoints, the customer thread pages and the agent panel. `tickets.create` closed to
+  customers after the security pass. No migration. 1426 unit tests.
 - **2026-07-28 (J6)** — Notifications, against `ConsoleChannel`. One `dispatch`, ten templates, the
   channel interface and its factory; status messages fired from `transition` and `applyPaymentEvent`
   and `order.placed` from checkout; J5's `queue.ts` absorbed and the four jobs re-pointed. No

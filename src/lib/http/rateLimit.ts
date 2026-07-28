@@ -168,6 +168,11 @@ export const RATE_LIMITS = {
   cartMutation: { limit: 60, windowMs: 60_000 },
   couponApply: { limit: 10, windowMs: 60_000 },
   checkout: { limit: 8, windowMs: 60_000 },
+  // Raising a request writes a row and sends nothing; replying appends to a thread the customer
+  // already owns. Both are tighter than the cart because neither is something a person does
+  // repeatedly in a minute, and an unbounded text field is worth protecting.
+  supportRaise: { limit: 5, windowMs: 60_000 },
+  supportReply: { limit: 20, windowMs: 60_000 },
 } as const satisfies Record<string, RateLimitRule>
 
 /**
